@@ -117,7 +117,9 @@ def compute_fitness_metrics(
     for entry in raw_data:
         daily_data.append(
             {
-                "date": entry.get("workoutDay", "").split("T")[0],
+                "date": (entry.get("workoutDay") or "").split("T")[0],
+                # Use `or 0` instead of get(key, 0) — the API may return explicit None values,
+                # which bypass dict.get's default.
                 "tss": entry.get("tssActual") or 0,
                 "ctl": round(entry.get("ctl") or 0, 1),
                 "atl": round(entry.get("atl") or 0, 1),
