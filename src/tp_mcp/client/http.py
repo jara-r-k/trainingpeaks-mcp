@@ -465,6 +465,7 @@ class TPClient:
             APIResponse.
         """
         ttl = self._resolve_ttl(endpoint) if cache else None
+        cache_key: str | None = None
 
         if ttl is not None:
             cache_key = build_cache_key(
@@ -479,8 +480,8 @@ class TPClient:
         response = await self._request("GET", endpoint, params=params)
 
         # Only cache successful responses with data
-        if ttl is not None and response.success and response.data is not None:
-            self._resp_cache.put(endpoint, cache_key, response.data, ttl)  # type: ignore[possibly-undefined]
+        if ttl is not None and cache_key is not None and response.success and response.data is not None:
+            self._resp_cache.put(endpoint, cache_key, response.data, ttl)
 
         return response
 
