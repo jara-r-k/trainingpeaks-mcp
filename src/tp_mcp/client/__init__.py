@@ -1,5 +1,11 @@
 """HTTP client module for TrainingPeaks API."""
 
+from tp_mcp.client.cache import (
+    CachedEntry,
+    CacheTier,
+    ResponseCache,
+    build_cache_key,
+)
 from tp_mcp.client.http import (
     APIError,
     APIResponse,
@@ -34,13 +40,17 @@ __all__ = [
     "AnalysisChannel",
     "AnalysisTotal",
     "AuthenticationError",
+    "CachedEntry",
+    "CacheTier",
     "ErrorCode",
     "NotFoundError",
     "PeakData",
     "PeaksResponse",
     "RateLimitError",
     "RawResponse",
+    "ResponseCache",
     "TPClient",
+    "build_cache_key",
     "UserProfile",
     "WorkoutAnalysis",
     "WorkoutDetail",
