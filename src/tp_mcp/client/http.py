@@ -70,6 +70,23 @@ class APIResponse:
 
 
 @dataclass
+class RawResponse:
+    """Wrapper for raw binary API responses."""
+
+    success: bool
+    content: bytes = field(default_factory=bytes)
+    content_type: str | None = None
+    content_disposition: str | None = None
+    error_code: ErrorCode | None = None
+    message: str = ""
+
+    @property
+    def is_error(self) -> bool:
+        """Check if response is an error."""
+        return not self.success
+
+
+@dataclass
 class TokenCache:
     """In-memory cache for OAuth access token."""
 
@@ -438,6 +455,89 @@ class TPClient:
             APIResponse.
         """
         return await self._request("DELETE", endpoint)
+
+    async def get_raw(self, endpoint: str, params: dict[str, Any] | None = None) -> RawResponse:
+        """Make an authenticated GET request and return the raw binary response.
+
+        Handles token refresh and retries on 401 exactly once, mirroring _request logic.
+
+        Args:
+            endpoint: API endpoint.
+            params: Query parameters.
+
+        Returns:
+            RawResponse with binary content and headers, or error.
+        """
+        await self._ensure_client()
+        assert self._client is not None
+
+        token_result = await self._ensure_access_token()
+        if not token_result.success:
+            return RawResponse(
+                success=False,
+                error_code=token_result.error_code,
+                message=token_result.message,
+            )
+
+        await self._throttle()
+
+        url = f"{self.base_url}{endpoint}"
+        headers = {**self._get_headers(), "Accept": "*/*"}
+
+        try:
+            response = await self._client.request("GET", url=url, headers=headers, params=params)
+
+            if response.status_code == 401:
+                self._token_cache.clear()
+                token_result = await self._ensure_access_token()
+                if not token_result.success:
+                    return RawResponse(
+                        success=False,
+                        error_code=token_result.error_code,
+                        message=token_result.message,
+                    )
+                await self._throttle()
+                headers = {**self._get_headers(), "Accept": "*/*"}
+                response = await self._client.request("GET", url=url, headers=headers, params=params)
+
+        except httpx.TimeoutException:
+            return RawResponse(
+                success=False,
+                error_code=ErrorCode.NETWORK_ERROR,
+                message="Request timed out. Check your network connection.",
+            )
+        except httpx.RequestError as e:
+            return RawResponse(
+                success=False,
+                error_code=ErrorCode.NETWORK_ERROR,
+                message=f"Network error: {e}",
+            )
+
+        if response.status_code == 401:
+            return RawResponse(
+                success=False,
+                error_code=ErrorCode.AUTH_EXPIRED,
+                message="Session expired or invalid. Run 'tp-mcp auth' to re-authenticate.",
+            )
+        if response.status_code == 404:
+            return RawResponse(
+                success=False,
+                error_code=ErrorCode.NOT_FOUND,
+                message="Resource not found.",
+            )
+        if response.status_code != 200:
+            return RawResponse(
+                success=False,
+                error_code=ErrorCode.API_ERROR,
+                message=f"API error: {response.status_code} - {response.text}",
+            )
+
+        return RawResponse(
+            success=True,
+            content=response.content,
+            content_type=response.headers.get("Content-Type"),
+            content_disposition=response.headers.get("Content-Disposition"),
+        )
 
     @property
     def athlete_id(self) -> int | None:
