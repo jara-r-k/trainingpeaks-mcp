@@ -118,10 +118,10 @@ def compute_fitness_metrics(
         daily_data.append(
             {
                 "date": entry.get("workoutDay", "").split("T")[0],
-                "tss": entry.get("tssActual", 0),
-                "ctl": round(entry.get("ctl", 0), 1),
-                "atl": round(entry.get("atl", 0), 1),
-                "tsb": round(entry.get("tsb", 0), 1),
+                "tss": entry.get("tssActual") or 0,
+                "ctl": round(entry.get("ctl") or 0, 1),
+                "atl": round(entry.get("atl") or 0, 1),
+                "tsb": round(entry.get("tsb") or 0, 1),
             }
         )
 
