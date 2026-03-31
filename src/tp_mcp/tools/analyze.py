@@ -1,4 +1,9 @@
-"""Tool for workout analysis via the Peaksware analysis API."""
+"""Tool for workout analysis via the Peaksware analysis API.
+
+Follows the prepare/compute pattern:
+  - prepare_workout() — fetches raw analysis data from API
+  - analyse_workout() — transforms raw data into summary output
+"""
 
 import json
 import logging
@@ -31,28 +36,18 @@ def _save_analysis_json(workout_id: int, data: dict[str, Any]) -> str:
     return str(filepath)
 
 
-async def tp_analyze_workout(workout_id: str) -> dict[str, Any]:
-    """Get detailed workout analysis including metrics, zones, and lap data.
+async def prepare_workout(workout_id: int) -> dict[str, Any]:
+    """Fetch raw workout analysis data from the Peaksware API.
 
-    Full time-series data is saved to a JSON file for further analysis.
+    This is the 'prepare' phase — handles auth, endpoint construction,
+    and API communication. Returns raw data or an error dict.
 
     Args:
-        workout_id: The workout ID (from tp_get_workouts).
+        workout_id: The validated workout ID.
 
     Returns:
-        Dict with totals, data channels, lap data, and path to full data file.
+        Dict with either 'raw_data' and 'athlete_id', or error fields.
     """
-    try:
-        validated = WorkoutIdInput(workout_id=workout_id)
-    except (ValidationError, ValueError) as e:
-        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
-        return {
-            "isError": True,
-            "error_code": "VALIDATION_ERROR",
-            "message": msg,
-        }
-    wid = validated.workout_id
-
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
@@ -95,7 +90,7 @@ async def tp_analyze_workout(workout_id: str) -> dict[str, Any]:
                 response = await http_client.post(
                     f"{ANALYSIS_API_BASE}/workout-analysis/v1/analyze",
                     headers=headers,
-                    json={"workoutId": wid, "viewingPersonId": athlete_id},
+                    json={"workoutId": workout_id, "viewingPersonId": athlete_id},
                 )
         except httpx.TimeoutException:
             return {
@@ -139,20 +134,29 @@ async def tp_analyze_workout(workout_id: str) -> dict[str, Any]:
                 "message": "Failed to parse analysis response.",
             }
 
-    try:
-        analysis = parse_workout_analysis(raw_data)
-    except Exception:
-        logger.exception("Failed to parse workout analysis")
-        return {
-            "isError": True,
-            "error_code": "API_ERROR",
-            "message": "Failed to parse workout analysis.",
-        }
+    return {"raw_data": raw_data, "athlete_id": athlete_id}
+
+
+def analyse_workout(raw_data: dict[str, Any], workout_id: int) -> dict[str, Any]:
+    """Transform raw analysis data into a structured summary.
+
+    This is the 'compute' phase — pure data transformation with no
+    network calls. Parses the raw response, saves full time-series
+    to disk, and returns a summary dict.
+
+    Args:
+        raw_data: Raw JSON response from the analysis API.
+        workout_id: The workout ID (for file naming).
+
+    Returns:
+        Dict with totals, channels, lap data, and data file path.
+    """
+    analysis = parse_workout_analysis(raw_data)
 
     # Save full raw data (including time-series) to file
-    data_file = _save_analysis_json(wid, raw_data)
+    data_file = _save_analysis_json(workout_id, raw_data)
 
-    # Return summary inline, point to file for full data
+    # Build summary
     totals = {t.name: {"value": t.value, "unit": t.unit} for t in analysis.totals}
 
     channels = [
@@ -183,3 +187,42 @@ async def tp_analyze_workout(workout_id: str) -> dict[str, Any]:
         "time_series_points": len(analysis.data),
         "data_file": data_file,
     }
+
+
+async def tp_analyze_workout(workout_id: str) -> dict[str, Any]:
+    """Get detailed workout analysis including metrics, zones, and lap data.
+
+    Full time-series data is saved to a JSON file for further analysis.
+
+    Args:
+        workout_id: The workout ID (from tp_get_workouts).
+
+    Returns:
+        Dict with totals, data channels, lap data, and path to full data file.
+    """
+    try:
+        validated = WorkoutIdInput(workout_id=workout_id)
+    except (ValidationError, ValueError) as e:
+        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": msg,
+        }
+    wid = validated.workout_id
+
+    # Prepare: fetch raw data
+    prepared = await prepare_workout(wid)
+    if prepared.get("isError"):
+        return prepared
+
+    # Compute: transform raw data
+    try:
+        return analyse_workout(prepared["raw_data"], wid)
+    except Exception:
+        logger.exception("Failed to parse workout analysis")
+        return {
+            "isError": True,
+            "error_code": "API_ERROR",
+            "message": "Failed to parse workout analysis.",
+        }

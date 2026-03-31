@@ -1,6 +1,7 @@
 """HTTP client wrapper for TrainingPeaks API."""
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -9,6 +10,9 @@ from typing import Any
 import httpx
 
 from tp_mcp.auth import get_credential
+from tp_mcp.client.cache import CacheTier, ResponseCache, build_cache_key
+
+logger = logging.getLogger("tp-mcp")
 
 TP_API_BASE = "https://tpapi.trainingpeaks.com"
 DEFAULT_TIMEOUT = 30.0
@@ -99,6 +103,21 @@ class TPClient:
     _cached_athlete_id: int | None = None
     _cached_user_data: dict | None = None
     _shared_token_cache: TokenCache | None = None
+    _response_cache: ResponseCache | None = None
+
+    # Endpoint patterns mapped to cache TTL tiers
+    _CACHE_TTL_MAP: list[tuple[str, float]] = [
+        # Profile / user data — changes very rarely
+        ("/users/v3/user", CacheTier.PROFILE.value),
+        ("/fitness/v1/athletes/", CacheTier.WORKOUT_LIST.value),  # settings, nutrition, availability
+        ("/fitness/v2/athletes/", CacheTier.WORKOUT_DETAIL.value),  # zones, comments
+        # Workout lists
+        ("/fitness/v6/athletes/", CacheTier.WORKOUT_LIST.value),
+        # Peaks / personal records
+        ("/personalrecord/", CacheTier.WORKOUT_LIST.value),
+        # Metrics
+        ("/metrics/", CacheTier.WORKOUT_LIST.value),
+    ]
 
     @classmethod
     def _get_token_cache(cls) -> TokenCache:
@@ -106,6 +125,13 @@ class TPClient:
         if cls._shared_token_cache is None:
             cls._shared_token_cache = TokenCache()
         return cls._shared_token_cache
+
+    @classmethod
+    def _get_response_cache(cls) -> ResponseCache:
+        """Get or create the shared response cache."""
+        if cls._response_cache is None:
+            cls._response_cache = ResponseCache()
+        return cls._response_cache
 
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         """Initialize the client.
@@ -119,6 +145,7 @@ class TPClient:
         self._athlete_id: int | None = None
         self._last_request_time: float = 0.0
         self._token_cache = TPClient._get_token_cache()
+        self._resp_cache = TPClient._get_response_cache()
 
     async def __aenter__(self) -> "TPClient":
         """Enter async context."""
@@ -392,20 +419,56 @@ class TPClient:
             message=f"API error: {response.status_code}",
         )
 
-    async def get(self, endpoint: str, params: dict[str, Any] | None = None) -> APIResponse:
-        """Make a GET request.
+    def _resolve_ttl(self, endpoint: str) -> float | None:
+        """Resolve TTL for an endpoint based on pattern matching.
+
+        Returns:
+            TTL in seconds, or None if the endpoint should not be cached.
+        """
+        for pattern, ttl in self._CACHE_TTL_MAP:
+            if pattern in endpoint:
+                return ttl
+        return None
+
+    async def get(
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        *,
+        cache: bool = True,
+    ) -> APIResponse:
+        """Make a GET request, with optional response caching.
 
         Args:
             endpoint: API endpoint.
             params: Query parameters.
+            cache: Whether to use the response cache (default True).
 
         Returns:
             APIResponse.
         """
-        return await self._request("GET", endpoint, params=params)
+        ttl = self._resolve_ttl(endpoint) if cache else None
+
+        if ttl is not None:
+            cache_key = build_cache_key(
+                endpoint=endpoint,
+                athlete_id=self._athlete_id,
+                params=params,
+            )
+            cached = self._resp_cache.get(endpoint, cache_key)
+            if cached is not None:
+                return APIResponse(success=True, data=cached)
+
+        response = await self._request("GET", endpoint, params=params)
+
+        # Only cache successful responses with data
+        if ttl is not None and response.success and response.data is not None:
+            self._resp_cache.put(endpoint, cache_key, response.data, ttl)  # type: ignore[possibly-undefined]
+
+        return response
 
     async def post(self, endpoint: str, json: dict[str, Any] | None = None) -> APIResponse:
-        """Make a POST request.
+        """Make a POST request. Invalidates cached responses for the endpoint.
 
         Args:
             endpoint: API endpoint.
@@ -414,10 +477,13 @@ class TPClient:
         Returns:
             APIResponse.
         """
-        return await self._request("POST", endpoint, json=json)
+        response = await self._request("POST", endpoint, json=json)
+        if response.success:
+            self._resp_cache.invalidate(endpoint)
+        return response
 
     async def put(self, endpoint: str, json: dict[str, Any] | None = None) -> APIResponse:
-        """Make a PUT request.
+        """Make a PUT request. Invalidates cached responses for the endpoint.
 
         Args:
             endpoint: API endpoint.
@@ -426,10 +492,13 @@ class TPClient:
         Returns:
             APIResponse.
         """
-        return await self._request("PUT", endpoint, json=json)
+        response = await self._request("PUT", endpoint, json=json)
+        if response.success:
+            self._resp_cache.invalidate(endpoint)
+        return response
 
     async def delete(self, endpoint: str) -> APIResponse:
-        """Make a DELETE request.
+        """Make a DELETE request. Invalidates cached responses for the endpoint.
 
         Args:
             endpoint: API endpoint.
@@ -437,7 +506,18 @@ class TPClient:
         Returns:
             APIResponse.
         """
-        return await self._request("DELETE", endpoint)
+        response = await self._request("DELETE", endpoint)
+        if response.success:
+            self._resp_cache.invalidate(endpoint)
+        return response
+
+    def cache_stats(self) -> dict[str, Any]:
+        """Return response cache statistics.
+
+        Returns:
+            Dict with hits, misses, hit_rate, size, evictions.
+        """
+        return self._resp_cache.stats()
 
     @property
     def athlete_id(self) -> int | None:
