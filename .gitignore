@@ -62,3 +62,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Oh My ClaudeCode state
+.omc/
+.superpowers/
