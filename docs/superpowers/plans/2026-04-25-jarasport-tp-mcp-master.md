@@ -1,3 +1,15 @@
+---
+title: jarasport-tp-mcp-master
+plan: jarasport-tp-mcp master integration
+status: in-progress
+owner: jara-r-k
+date: 2026-04-25
+project: trainingpeaks-mcp
+phases: P0-P7
+actionable: auto
+next_action: Start P0 Task 1 (PyPI name check + repo creation)
+---
+
 # jarasport-tp-mcp — Master Integration Plan
 
 > **For agentic workers:** This is the **program-level coordination document**, not a TDD plan. It is the single source of truth for phase status, cross-session handoffs, and "nothing falls through cracks" tracking. Every session **must** read this first and update it on exit. Per-phase TDD plans live alongside this file as `2026-04-25-jarasport-tp-mcp-P<N>-<name>.md`.

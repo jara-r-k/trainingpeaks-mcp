@@ -1,3 +1,17 @@
+---
+title: jarasport-tp-mcp-P0-foundations
+plan: jarasport-tp-mcp Phase 0 Foundations
+status: not-started
+owner: jara-r-k
+date: 2026-04-25
+project: trainingpeaks-mcp
+parent: jarasport-tp-mcp-master
+phase: P0
+actionable: auto
+next_action: Task 1 — PyPI name check and repo creation
+depends_on: none
+---
+
 # P0 — Foundations Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
