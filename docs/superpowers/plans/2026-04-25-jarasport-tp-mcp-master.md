@@ -50,7 +50,7 @@ Update whenever a phase transitions between statuses. Timestamps in `YYYY-MM-DD`
 | P5    | Release & supply chain         | NOT STARTED | `2026-04-25-jarasport-tp-mcp-P5-release-supply-chain.md`             | —          | —          | —              | P4         |
 | P6    | Docs                           | NOT STARTED | `2026-04-25-jarasport-tp-mcp-P6-docs.md`                             | —          | —          | —              | P4 (parallel with P5) |
 | P7    | RDH cutover                    | NOT STARTED | `2026-04-25-jarasport-tp-mcp-P7-rdh-cutover.md`                      | —          | —          | —              | P5 + Clerk |
-| CLK   | Clerk integration (other session) | NOT STARTED | external                                                          | —          | —          | —              | ADR-0001 signed |
+| CLK   | Clerk integration (other session) | PENDING     | [`./2026-04-25-jarasport-clerk-integration-master.md`](./2026-04-25-jarasport-clerk-integration-master.md) | —          | —          | —              | — (CLK-0 is `actionable: auto`; ADR-0001 drafted 2026-04-25, owner sign-off is CLK-0 Task 7) |
 
 **Status vocabulary:**
 - `NOT STARTED` — no work done, prerequisites may not be met.
@@ -104,9 +104,9 @@ Between-phase contracts. Each handoff is a markdown file under `docs/superpowers
 | P4   | P5  | `HANDOFFS/P4-to-P5.md`                 | not written  | Observability configuration surface, release-readiness of service |
 | P4   | P6  | `HANDOFFS/P4-to-P6.md`                 | not written  | Architecture facts, runbook inputs |
 | P5   | P7  | `HANDOFFS/P5-to-P7.md`                 | not written  | Deployment coordinates, migration tooling, feature-flag scheme |
-| CLK  | P2  | `HANDOFFS/CLK-to-P2.md`                | not written  | Clerk JWT verification SDK choice, JWKS URL, expected claims |
-| CLK  | P7  | `HANDOFFS/CLK-to-P7.md`                | not written  | Onboarding UI routes, "Connect TP" entry point, cutover gating |
-| ADR  | CLK | `docs/adr/ADR-0001-clerk-boundary.md`  | not written  | Auth boundary; authored before CLK begins |
+| CLK  | P2  | `HANDOFFS/CLK-1-to-P2.md`              | scheduled (CLK-1 Task 12) | Clerk JWT verification SDK choice, JWKS URL, expected claims — produced by CLK-1 |
+| CLK  | P7  | `HANDOFFS/CLK-6-to-P7.md`              | scheduled (CLK-6 Task 13) | Onboarding UI routes, "Connect TP" entry point, cutover gating — produced by CLK-6 |
+| ADR  | CLK | `docs/adr/ADR-0001-clerk-boundary.md`  | drafted 2026-04-25; sign-off in CLK-0 Task 7 | Auth boundary; ownership matrix; wire format; rejection codes |
 
 **Writing a handoff:** before marking a phase DONE, the producing session must ensure the handoff file exists and captures every assumption the consumer may make. The consuming session's first step is "read handoff and ask questions" — if the handoff is ambiguous, the consumer pings back, doesn't guess.
 
@@ -378,9 +378,16 @@ Every box below must be ticked before declaring the program complete. These map 
 - Spec: [../specs/2026-04-25-jarasport-tp-mcp-design.md](../specs/2026-04-25-jarasport-tp-mcp-design.md)
 - P0 plan: [./2026-04-25-jarasport-tp-mcp-P0-foundations.md](./2026-04-25-jarasport-tp-mcp-P0-foundations.md)
 - P1–P7 plans: written at phase-start, filed alongside this file.
-- ADRs: `../../adr/` (created in P6).
+- ADRs: `../../adr/` — ADR-0001 (Clerk boundary) drafted 2026-04-25; ADR-0002…0004 created in P5/P6.
 - Handoffs: `./HANDOFFS/`.
 - State snapshots (optional, for crash recovery): `./STATE/`.
+- **CLK (parallel Clerk integration) program**:
+  - Spec: [../specs/2026-04-25-jarasport-clerk-integration-design.md](../specs/2026-04-25-jarasport-clerk-integration-design.md)
+  - Master: [./2026-04-25-jarasport-clerk-integration-master.md](./2026-04-25-jarasport-clerk-integration-master.md)
+  - ADR-0001 (Clerk boundary — prerequisite): [../../adr/ADR-0001-clerk-boundary.md](../../adr/ADR-0001-clerk-boundary.md)
+  - Phase plans CLK-0…CLK-6: `./2026-04-25-jarasport-clerk-integration-CLK-*.md`
+  - RDH cross-repo pointer: `~/projects/Jarasport/Race Day Hub/docs/superpowers/plans/2026-04-25-clerk-integration-pointer.md`
+  - Wiki concept: `~/projects/wiki/concepts/clerk-identity-layer.md`
 
 ---
 
