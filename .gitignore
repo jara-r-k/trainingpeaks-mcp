@@ -66,3 +66,6 @@ Thumbs.db
 # Oh My ClaudeCode state
 .omc/
 .superpowers/
+
+# Empty Claude Code skills scaffold
+.claude/
