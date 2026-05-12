@@ -192,19 +192,31 @@ async def tp_get_events(start_date: str, end_date: str) -> dict[str, Any]:
 
     Args:
         start_date: Start date (YYYY-MM-DD).
-        end_date: End date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD). Max 730 days span (±1 year typical).
 
     Returns:
         Dict with events list.
     """
     try:
-        params = DateRangeInput(start_date=start_date, end_date=end_date)
-    except (ValidationError, ValueError) as e:
-        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        start = dt_date.fromisoformat(start_date)
+        end = dt_date.fromisoformat(end_date)
+    except ValueError as e:
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
-            "message": msg,
+            "message": f"Invalid date: {e}",
+        }
+    if start > end:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "start_date must be before or equal to end_date",
+        }
+    if (end - start).days > 730:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Date range too large. Maximum 730 days.",
         }
 
     async with TPClient() as client:
@@ -216,8 +228,8 @@ async def tp_get_events(start_date: str, end_date: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        start_str = params.start_date.isoformat()
-        end_str = params.end_date.isoformat()
+        start_str = start.isoformat()
+        end_str = end.isoformat()
         endpoint = f"/fitness/v6/athletes/{athlete_id}/events/{start_str}/{end_str}"
         response = await client.get(endpoint)
 

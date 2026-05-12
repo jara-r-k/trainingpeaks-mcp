@@ -24,7 +24,9 @@ from tp_mcp.tools.events import (
 class TestGetFocusEvent:
     @pytest.mark.asyncio
     async def test_returns_event(self):
-        response = APIResponse(success=True, data={"name": "IM World Champs", "priority": "A"})
+        response = APIResponse(
+            success=True, data={"name": "IM World Champs", "priority": "A"}
+        )
         with patch("tp_mcp.tools.events.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
@@ -79,6 +81,25 @@ class TestGetEvents:
 
         assert result["count"] == 2
 
+    @pytest.mark.asyncio
+    async def test_one_year_window_accepted(self):
+        """±1y windows are needed for race-target intent — used to fail under the 90-day cap."""
+        response = APIResponse(success=True, data=[])
+        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+            result = await tp_get_events("2025-05-12", "2027-05-12")
+        assert result.get("count") == 0
+        assert "isError" not in result
+
+    @pytest.mark.asyncio
+    async def test_window_over_730_days_rejected(self):
+        result = await tp_get_events("2024-01-01", "2026-06-01")
+        assert result["isError"] is True
+        assert result["error_code"] == "VALIDATION_ERROR"
+
 
 class TestCreateEvent:
     @pytest.mark.asyncio
@@ -91,9 +112,12 @@ class TestCreateEvent:
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = await tp_create_event(
-                name="IRONMAN", date="2026-09-15",
-                event_type="Triathlon", priority="A",
-                distance_km=226.0, ctl_target=120.0,
+                name="IRONMAN",
+                date="2026-09-15",
+                event_type="Triathlon",
+                priority="A",
+                distance_km=226.0,
+                ctl_target=120.0,
             )
 
         assert result["success"] is True
@@ -146,7 +170,9 @@ class TestCreateNote:
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = await tp_create_note(
-                date="2026-03-15", title="Rest week", description="Deload",
+                date="2026-03-15",
+                title="Rest week",
+                description="Deload",
             )
 
         assert result["success"] is True
@@ -178,8 +204,10 @@ class TestAvailability:
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = await tp_create_availability(
-                start_date="2026-04-01", end_date="2026-04-07",
-                limited=True, sport_types=["Run", "Swim"],
+                start_date="2026-04-01",
+                end_date="2026-04-07",
+                limited=True,
+                sport_types=["Run", "Swim"],
             )
 
         assert result["success"] is True
@@ -229,7 +257,9 @@ class TestGetNote:
 
     @pytest.mark.asyncio
     async def test_get_note_not_found(self):
-        response = APIResponse(success=False, error_code=ErrorCode.NOT_FOUND, message="Not found")
+        response = APIResponse(
+            success=False, error_code=ErrorCode.NOT_FOUND, message="Not found"
+        )
         with patch("tp_mcp.tools.events.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
@@ -297,7 +327,9 @@ class TestUpdateNote:
 
     @pytest.mark.asyncio
     async def test_update_note_get_fails(self):
-        get_response = APIResponse(success=False, error_code=ErrorCode.NOT_FOUND, message="Not found")
+        get_response = APIResponse(
+            success=False, error_code=ErrorCode.NOT_FOUND, message="Not found"
+        )
         with patch("tp_mcp.tools.events.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
