@@ -126,7 +126,10 @@ class TPClient:
     _CACHE_TTL_MAP: list[tuple[str, float]] = [
         # Profile / user data — changes very rarely
         ("/users/v3/user", CacheTier.PROFILE.value),
-        ("/fitness/v1/athletes/", CacheTier.WORKOUT_LIST.value),  # settings, nutrition, availability
+        (
+            "/fitness/v1/athletes/",
+            CacheTier.WORKOUT_LIST.value,
+        ),  # settings, nutrition, availability
         ("/fitness/v2/athletes/", CacheTier.WORKOUT_DETAIL.value),  # zones, comments
         # Workout lists
         ("/fitness/v6/athletes/", CacheTier.WORKOUT_LIST.value),
@@ -318,7 +321,7 @@ class TPClient:
         self,
         method: str,
         endpoint: str,
-        json: dict[str, Any] | None = None,
+        json: dict[str, Any] | list[Any] | None = None,
         params: dict[str, Any] | None = None,
         _retry_on_401: bool = True,
     ) -> APIResponse:
@@ -360,7 +363,9 @@ class TPClient:
             if response.status_code == 401 and _retry_on_401:
                 # Token might have expired mid-request, clear and retry once
                 self._token_cache.clear()
-                return await self._request(method, endpoint, json=json, params=params, _retry_on_401=False)
+                return await self._request(
+                    method, endpoint, json=json, params=params, _retry_on_401=False
+                )
 
             return self._handle_response(response)
 
@@ -399,6 +404,9 @@ class TPClient:
                 return APIResponse(success=True, data=data)
             except Exception:
                 return APIResponse(success=True, data=None)
+
+        if response.status_code == 204:
+            return APIResponse(success=True, data=None)
 
         if response.status_code == 401:
             # Don't auto-clear - could be temporary. User can run 'tp-mcp auth-clear' if needed.
@@ -480,12 +488,19 @@ class TPClient:
         response = await self._request("GET", endpoint, params=params)
 
         # Only cache successful responses with data
-        if ttl is not None and cache_key is not None and response.success and response.data is not None:
+        if (
+            ttl is not None
+            and cache_key is not None
+            and response.success
+            and response.data is not None
+        ):
             self._resp_cache.put(endpoint, cache_key, response.data, ttl)
 
         return response
 
-    async def post(self, endpoint: str, json: dict[str, Any] | None = None) -> APIResponse:
+    async def post(
+        self, endpoint: str, json: dict[str, Any] | list[Any] | None = None
+    ) -> APIResponse:
         """Make a POST request. Invalidates cached responses for the endpoint.
 
         Args:
@@ -500,7 +515,9 @@ class TPClient:
             self._resp_cache.invalidate(endpoint)
         return response
 
-    async def put(self, endpoint: str, json: dict[str, Any] | None = None) -> APIResponse:
+    async def put(
+        self, endpoint: str, json: dict[str, Any] | list[Any] | None = None
+    ) -> APIResponse:
         """Make a PUT request. Invalidates cached responses for the endpoint.
 
         Args:
@@ -537,7 +554,9 @@ class TPClient:
         """
         return self._resp_cache.stats()
 
-    async def get_raw(self, endpoint: str, params: dict[str, Any] | None = None) -> RawResponse:
+    async def get_raw(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> RawResponse:
         """Make an authenticated GET request and return the raw binary response.
 
         Handles token refresh and retries on 401 exactly once, mirroring _request logic.
@@ -566,7 +585,9 @@ class TPClient:
         headers = {**self._get_headers(), "Accept": "*/*"}
 
         try:
-            response = await self._client.request("GET", url=url, headers=headers, params=params)
+            response = await self._client.request(
+                "GET", url=url, headers=headers, params=params
+            )
 
             if response.status_code == 401:
                 self._token_cache.clear()
@@ -579,7 +600,9 @@ class TPClient:
                     )
                 await self._throttle()
                 headers = {**self._get_headers(), "Accept": "*/*"}
-                response = await self._client.request("GET", url=url, headers=headers, params=params)
+                response = await self._client.request(
+                    "GET", url=url, headers=headers, params=params
+                )
 
         except httpx.TimeoutException:
             return RawResponse(
@@ -709,19 +732,26 @@ class TPClient:
         elif athletes:
             # Default: find the coach's own athlete entry
             for a in athletes:
-                if a.get("coachedBy") == person_id and a.get("email", "").lower() == user_data.get("email", "").lower():
+                if (
+                    a.get("coachedBy") == person_id
+                    and a.get("email", "").lower() == user_data.get("email", "").lower()
+                ):
                     athlete_id = a.get("athleteId")
                     break
             # Fallback: match by last name
             if not athlete_id:
                 user_last = (user_data.get("lastName") or "").lower()
                 for a in athletes:
-                    if (a.get("lastName") or "").lower() == user_last and a.get("coachedBy") == person_id:
+                    if (a.get("lastName") or "").lower() == user_last and a.get(
+                        "coachedBy"
+                    ) == person_id:
                         athlete_id = a.get("athleteId")
                         break
             # Final fallback: personId or first athlete entry (non-coach accounts)
             if not athlete_id:
-                athlete_id = person_id or (athletes[0].get("athleteId") if athletes else None)
+                athlete_id = person_id or (
+                    athletes[0].get("athleteId") if athletes else None
+                )
         else:
             athlete_id = person_id
 
@@ -754,7 +784,9 @@ class TPClient:
         if not exchange_result.success:
             result["step"] = "token_exchange"
             result["error"] = exchange_result.message
-            result["error_code"] = exchange_result.error_code.value if exchange_result.error_code else None
+            result["error_code"] = (
+                exchange_result.error_code.value if exchange_result.error_code else None
+            )
             return result
 
         result["details"]["token_exchange"] = "success"
@@ -774,7 +806,9 @@ class TPClient:
         if not test_response.success:
             result["step"] = "api_test"
             result["error"] = test_response.message
-            result["error_code"] = test_response.error_code.value if test_response.error_code else None
+            result["error_code"] = (
+                test_response.error_code.value if test_response.error_code else None
+            )
             return result
 
         result["details"]["api_test"] = "success"

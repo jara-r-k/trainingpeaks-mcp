@@ -11,14 +11,15 @@ from tp_mcp.tools._validation import format_validation_error
 
 logger = logging.getLogger("tp-mcp")
 
-# Coggan 5-zone power model boundaries (% of FTP)
-COGGAN_ZONES = [
-    ("Z1 Active Recovery", 0, 55),
-    ("Z2 Endurance", 56, 75),
-    ("Z3 Tempo", 76, 90),
-    ("Z4 Threshold", 91, 105),
-    ("Z5 VO2max", 106, 150),
+POWER_ZONE_LABELS = [
+    "Recovery",
+    "Endurance",
+    "Tempo",
+    "Threshold",
+    "VO2 Max",
+    "Anaerobic Capacity",
 ]
+POWER_ZONE_MAXIMUM = 2000
 
 
 class FTPInput(BaseModel):
@@ -120,7 +121,7 @@ async def tp_get_athlete_settings() -> dict[str, Any]:
 
 
 async def tp_update_ftp(ftp: int) -> dict[str, Any]:
-    """Update FTP and recalculate Coggan 5-zone power model.
+    """Update FTP and recalculate the athlete's default power zones.
 
     Args:
         ftp: Functional Threshold Power in watts.
@@ -147,19 +148,100 @@ async def tp_update_ftp(ftp: int) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        # Build Coggan zones
-        zones = []
-        for name, low_pct, high_pct in COGGAN_ZONES:
-            zones.append({
-                "name": name,
-                "minimum": round(params.ftp * low_pct / 100.0),
-                "maximum": round(params.ftp * high_pct / 100.0),
-            })
+        settings_endpoint = f"/fitness/v1/athletes/{athlete_id}/settings"
+        settings_response = await client.get(settings_endpoint)
+        if settings_response.is_error:
+            return {
+                "isError": True,
+                "error_code": settings_response.error_code.value if settings_response.error_code else "API_ERROR",
+                "message": settings_response.message,
+            }
 
-        payload = {
+        if not settings_response.data or not isinstance(settings_response.data, dict):
+            return {
+                "isError": True,
+                "error_code": "API_ERROR",
+                "message": "No settings data returned.",
+            }
+
+        power_zones = settings_response.data.get("powerZones")
+        if not isinstance(power_zones, list) or not power_zones:
+            return {
+                "isError": True,
+                "error_code": "API_ERROR",
+                "message": "No power zones found in athlete settings.",
+            }
+
+        target_index = next(
+            (idx for idx, zone_group in enumerate(power_zones)
+             if isinstance(zone_group, dict) and zone_group.get("workoutTypeId") == 0),
+            0,
+        )
+        target_zone_group = power_zones[target_index]
+        if not isinstance(target_zone_group, dict):
+            return {
+                "isError": True,
+                "error_code": "API_ERROR",
+                "message": "Unexpected power zone format returned by TrainingPeaks.",
+            }
+
+        existing_labels = []
+        existing_zones = target_zone_group.get("zones")
+        if isinstance(existing_zones, list):
+            existing_labels = [
+                zone.get("label")
+                for zone in existing_zones
+                if isinstance(zone, dict) and zone.get("label")
+            ]
+        labels = existing_labels if len(existing_labels) == len(POWER_ZONE_LABELS) else POWER_ZONE_LABELS
+
+        current_threshold = target_zone_group.get("threshold")
+        zone_maxima: list[int] = []
+        if isinstance(current_threshold, (int, float)) and current_threshold > 0 and isinstance(existing_zones, list):
+            existing_maxima: list[int] = []
+            for zone in existing_zones[:-1]:
+                if not isinstance(zone, dict):
+                    existing_maxima = []
+                    break
+                maximum = zone.get("maximum")
+                if not isinstance(maximum, (int, float)):
+                    existing_maxima = []
+                    break
+                existing_maxima.append(int(maximum))
+            if len(existing_maxima) == len(labels) - 1:
+                zone_maxima = [round(params.ftp * (maximum / current_threshold)) for maximum in existing_maxima]
+
+        if not zone_maxima:
+            zone_maxima = [
+                round(params.ftp * ratio)
+                for ratio in (0.56, 0.76, 0.91, 1.06, 1.21)
+            ]
+        zones = []
+        lower_bound = 0
+        for label, upper_bound in zip(labels[:-1], zone_maxima, strict=False):
+            zones.append({
+                "label": label,
+                "minimum": lower_bound,
+                "maximum": upper_bound,
+            })
+            lower_bound = upper_bound + 1
+        zones.append({
+            "label": labels[-1],
+            "minimum": lower_bound,
+            "maximum": POWER_ZONE_MAXIMUM,
+        })
+
+        updated_zone_group = {
             "threshold": params.ftp,
+            "calculationMethod": target_zone_group.get("calculationMethod"),
+            "workoutTypeId": target_zone_group.get("workoutTypeId"),
             "zones": zones,
         }
+        if "zoneCalculatorId" in target_zone_group:
+            updated_zone_group["zoneCalculatorId"] = target_zone_group.get("zoneCalculatorId")
+
+        payload = list(power_zones)
+        payload[target_index] = updated_zone_group
 
         endpoint = f"/fitness/v2/athletes/{athlete_id}/powerzones"
         response = await client.put(endpoint, json=payload)
@@ -174,6 +256,7 @@ async def tp_update_ftp(ftp: int) -> dict[str, Any]:
         return {
             "success": True,
             "ftp": params.ftp,
+            "workout_type_id": updated_zone_group["workoutTypeId"],
             "zones": zones,
         }
 

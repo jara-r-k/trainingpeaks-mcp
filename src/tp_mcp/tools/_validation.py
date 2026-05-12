@@ -1,6 +1,7 @@
 """Pydantic input validation models for tool arguments."""
 
 from datetime import date as date_type
+from datetime import datetime as datetime_type
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -53,7 +54,7 @@ class DateRangeInput(BaseModel):
 class CreateWorkoutInput(BaseModel):
     """Validates input for workout creation."""
 
-    date: date_type
+    date: date_type | datetime_type
     sport: str
     title: str = Field(min_length=1, max_length=200)
     duration_minutes: int | None = Field(default=None, ge=1, le=1440)
@@ -61,6 +62,7 @@ class CreateWorkoutInput(BaseModel):
     distance_km: float | None = Field(default=None, gt=0, le=1000)
     tss_planned: float | None = Field(default=None, gt=0, le=2000)
     structure: Any = None
+    structured_workout: Any = None
     subtype_id: int | None = Field(default=None, gt=0)
     tags: str | None = Field(default=None, max_length=500)
     feeling: int | None = Field(default=None, ge=0, le=10)
@@ -70,6 +72,8 @@ class CreateWorkoutInput(BaseModel):
     @classmethod
     def coerce_date_string(cls, v: object) -> object:
         if isinstance(v, str):
+            if "T" in v or " " in v:
+                return datetime_type.fromisoformat(v)
             return date_type.fromisoformat(v)
         return v
 
@@ -85,8 +89,16 @@ class CreateWorkoutInput(BaseModel):
 
     @model_validator(mode="after")
     def check_duration_or_structure(self) -> "CreateWorkoutInput":
-        if self.duration_minutes is None and self.structure is None:
-            raise ValueError("Either duration_minutes or structure must be provided")
+        if self.structure is not None and self.structured_workout is not None:
+            raise ValueError("Provide only one of structure or structured_workout")
+        if (
+            self.duration_minutes is None
+            and self.structure is None
+            and self.structured_workout is None
+        ):
+            raise ValueError(
+                "Either duration_minutes, structure, or structured_workout must be provided",
+            )
         return self
 
 
@@ -98,7 +110,7 @@ class UpdateWorkoutInput(BaseModel):
     subtype_id: int | None = Field(default=None, gt=0)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
-    date: date_type | None = None
+    date: date_type | datetime_type | None = None
     duration_minutes: float | None = Field(default=None, ge=0, le=1440)
     distance_km: float | None = Field(default=None, ge=0, le=1000)
     tss_planned: float | None = Field(default=None, ge=0, le=2000)
@@ -108,6 +120,7 @@ class UpdateWorkoutInput(BaseModel):
     feeling: int | None = Field(default=None, ge=0, le=10)
     rpe: int | None = Field(default=None, ge=1, le=10)
     structure: Any = None
+    structured_workout: Any = None
 
     @field_validator("workout_id", mode="before")
     @classmethod
@@ -122,6 +135,8 @@ class UpdateWorkoutInput(BaseModel):
         if v is None:
             return v
         if isinstance(v, str):
+            if "T" in v or " " in v:
+                return datetime_type.fromisoformat(v)
             return date_type.fromisoformat(v)
         return v
 
@@ -136,6 +151,12 @@ class UpdateWorkoutInput(BaseModel):
             valid = ", ".join(SPORT_TYPE_MAP.keys())
             raise ValueError(f"Invalid sport '{v}'. Valid: {valid}")
         return v
+
+    @model_validator(mode="after")
+    def check_structure_inputs(self) -> "UpdateWorkoutInput":
+        if self.structure is not None and self.structured_workout is not None:
+            raise ValueError("Provide only one of structure or structured_workout")
+        return self
 
 
 class SingleDateInput(BaseModel):

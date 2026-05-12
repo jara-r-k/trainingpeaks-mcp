@@ -3,6 +3,7 @@
 import time
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from tp_mcp.client.http import MIN_REQUEST_INTERVAL, APIResponse, TPClient
@@ -185,3 +186,18 @@ class TestSharedTokenCache:
         assert TPClient._shared_token_cache is None
         TPClient()
         assert TPClient._shared_token_cache is not None
+
+
+class TestHandleResponse:
+    """Tests for HTTP response handling."""
+
+    def test_204_is_success(self):
+        """204 No Content responses should be treated as successful writes."""
+        client = TPClient()
+
+        response = httpx.Response(status_code=204)
+
+        result = client._handle_response(response)
+
+        assert result.success is True
+        assert result.data is None

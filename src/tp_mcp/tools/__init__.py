@@ -10,6 +10,7 @@ from tp_mcp.tools.equipment import (
     tp_update_equipment,
 )
 from tp_mcp.tools.events import (
+    tp_add_note_comment,
     tp_create_availability,
     tp_create_event,
     tp_create_note,
@@ -20,7 +21,10 @@ from tp_mcp.tools.events import (
     tp_get_events,
     tp_get_focus_event,
     tp_get_next_event,
+    tp_get_note,
+    tp_get_note_comments,
     tp_update_event,
+    tp_update_note,
 )
 from tp_mcp.tools.fitness import tp_get_fitness
 from tp_mcp.tools.library import (
@@ -61,11 +65,14 @@ from tp_mcp.tools.workouts import (
     tp_get_workout,
     tp_get_workout_comments,
     tp_get_workouts,
+    tp_pair_workout,
     tp_reorder_workouts,
+    tp_unpair_workout,
     tp_update_workout,
 )
 
 __all__ = [
+    "tp_add_note_comment",
     "tp_add_workout_comment",
     "tp_analyze_workout",
     "tp_auth_status",
@@ -97,6 +104,8 @@ __all__ = [
     "tp_get_library_items",
     "tp_get_metrics",
     "tp_get_next_event",
+    "tp_get_note",
+    "tp_get_note_comments",
     "tp_get_nutrition",
     "tp_get_peaks",
     "tp_get_pool_length_settings",
@@ -109,11 +118,14 @@ __all__ = [
     "tp_list_athletes",
     "tp_get_workouts",
     "tp_log_metrics",
+    "tp_pair_workout",
     "tp_refresh_auth",
     "tp_reorder_workouts",
     "tp_schedule_library_workout",
+    "tp_unpair_workout",
     "tp_update_equipment",
     "tp_update_event",
+    "tp_update_note",
     "tp_update_ftp",
     "tp_update_hr_zones",
     "tp_update_library_item",

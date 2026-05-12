@@ -16,6 +16,7 @@ from mcp.types import (
 from tp_mcp.auth import get_credential, validate_auth
 from tp_mcp.client.context import athlete_override
 from tp_mcp.tools import (
+    tp_add_note_comment,
     tp_add_workout_comment,
     tp_analyze_workout,
     tp_auth_status,
@@ -47,6 +48,8 @@ from tp_mcp.tools import (
     tp_get_library_items,
     tp_get_metrics,
     tp_get_next_event,
+    tp_get_note,
+    tp_get_note_comments,
     tp_get_nutrition,
     tp_get_peaks,
     tp_get_pool_length_settings,
@@ -59,14 +62,17 @@ from tp_mcp.tools import (
     tp_get_workouts,
     tp_list_athletes,
     tp_log_metrics,
+    tp_pair_workout,
     tp_refresh_auth,
     tp_reorder_workouts,
     tp_schedule_library_workout,
+    tp_unpair_workout,
     tp_update_equipment,
     tp_update_event,
     tp_update_ftp,
     tp_update_hr_zones,
     tp_update_library_item,
+    tp_update_note,
     tp_update_nutrition,
     tp_update_speed_zones,
     tp_update_workout,
@@ -112,6 +118,12 @@ STRUCTURE_DESCRIPTION = (
     " rest (all recovery), coolDown, other."
     " Intensity values are % of threshold (FTP/HR/pace)."
     " Optional per-step: cadence_min, cadence_max (rpm)."
+)
+RAW_STRUCTURE_DESCRIPTION = (
+    "Native TrainingPeaks structured workout payload in builder format. "
+    "Use this only when you already have a TP structure object with keys like "
+    "structure, polyline, primaryLengthMetric, primaryIntensityMetric, and "
+    "primaryIntensityTargetOrRange."
 )
 
 
@@ -179,13 +191,14 @@ TOOLS = [
     Tool(
         name="tp_create_workout",
         description=(
-            "Create a planned workout with optional interval structure. "
-            "Duration auto-computed from structure if not provided."
+            "Create a planned workout with optional simplified interval structure "
+            "or native TrainingPeaks structured_workout payload. Duration is "
+            "auto-computed only from simplified structure when not provided."
         ),
         inputSchema={
             "type": "object",
             "properties": {
-                "date": {"type": "string", "description": "YYYY-MM-DD"},
+                "date": {"type": "string", "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"},
                 "sport": {"type": "string", "enum": list(SPORT_TYPE_MAP.keys())},
                 "title": {"type": "string", "description": "Workout title"},
                 "duration_minutes": {
@@ -198,6 +211,10 @@ TOOLS = [
                 "structure": {
                     "type": ["object", "string"],
                     "description": STRUCTURE_DESCRIPTION,
+                },
+                "structured_workout": {
+                    "type": "object",
+                    "description": RAW_STRUCTURE_DESCRIPTION,
                 },
                 "subtype_id": {
                     "type": "integer",
@@ -212,7 +229,11 @@ TOOLS = [
     ),
     Tool(
         name="tp_update_workout",
-        description="Update fields of an existing workout. Fetches existing, merges, then saves.",
+        description=(
+            "Update fields of an existing workout. Supports the same simplified "
+            "interval structure format as tp_create_workout plus an optional native "
+            "structured_workout payload, then fetches existing, merges, and saves."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -221,7 +242,7 @@ TOOLS = [
                 "subtype_id": {"type": "integer"},
                 "title": {"type": "string"},
                 "description": {"type": "string"},
-                "date": {"type": "string", "description": "YYYY-MM-DD"},
+                "date": {"type": "string", "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"},
                 "duration_minutes": {"type": "number"},
                 "distance_km": {"type": "number"},
                 "tss_planned": {"type": "number"},
@@ -230,7 +251,14 @@ TOOLS = [
                 "coach_comment": {"type": "string"},
                 "feeling": {"type": "integer", "description": "0-10"},
                 "rpe": {"type": "integer", "description": "1-10"},
-                "structure": {"type": ["object", "string"]},
+                "structure": {
+                    "type": ["object", "string"],
+                    "description": STRUCTURE_DESCRIPTION,
+                },
+                "structured_workout": {
+                    "type": "object",
+                    "description": RAW_STRUCTURE_DESCRIPTION,
+                },
             },
             "required": ["workout_id"],
         },
@@ -270,6 +298,44 @@ TOOLS = [
                 },
             },
             "required": ["workout_ids"],
+        },
+    ),
+    Tool(
+        name="tp_unpair_workout",
+        description=(
+            "Unpair a workout. Detaches the completed workout file from the "
+            "planned workout, creating two separate workouts. No data is lost."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "workout_id": {
+                    "type": "string",
+                    "description": "The ID of the paired workout to unpair.",
+                },
+            },
+            "required": ["workout_id"],
+        },
+    ),
+    Tool(
+        name="tp_pair_workout",
+        description=(
+            "Pair a completed workout with a planned workout. Attaches the "
+            "completed data to the planned workout, merging them into one."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "completed_workout_id": {
+                    "type": "string",
+                    "description": "The ID of the completed (actual) workout.",
+                },
+                "planned_workout_id": {
+                    "type": "string",
+                    "description": "The ID of the planned workout to pair with.",
+                },
+            },
+            "required": ["completed_workout_id", "planned_workout_id"],
         },
     ),
     Tool(
@@ -442,7 +508,7 @@ TOOLS = [
     ),
     Tool(
         name="tp_update_ftp",
-        description="Update FTP and recalculate Coggan 5-zone power model.",
+        description="Update FTP and recalculate the default power zones.",
         inputSchema={
             "type": "object",
             "properties": {"ftp": {"type": "integer", "description": "FTP in watts"}},
@@ -691,6 +757,51 @@ TOOLS = [
         },
     ),
     Tool(
+        name="tp_get_note",
+        description="Get a calendar note by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {"note_id": {"type": "string", "description": "Note ID"}},
+            "required": ["note_id"],
+        },
+    ),
+    Tool(
+        name="tp_update_note",
+        description="Update a calendar note. Provide at least one of: title, description, date, is_hidden.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "note_id": {"type": "string", "description": "Note ID"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "date": {"type": "string", "description": "YYYY-MM-DD"},
+                "is_hidden": {"type": "boolean"},
+            },
+            "required": ["note_id"],
+        },
+    ),
+    Tool(
+        name="tp_get_note_comments",
+        description="Get all comments on a calendar note.",
+        inputSchema={
+            "type": "object",
+            "properties": {"note_id": {"type": "string", "description": "Note ID"}},
+            "required": ["note_id"],
+        },
+    ),
+    Tool(
+        name="tp_add_note_comment",
+        description="Add a comment to a calendar note.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "note_id": {"type": "string", "description": "Note ID"},
+                "comment": {"type": "string", "description": "Comment text"},
+            },
+            "required": ["note_id", "comment"],
+        },
+    ),
+    Tool(
         name="tp_get_availability",
         description="Get availability entries for a date range.",
         inputSchema={
@@ -909,6 +1020,7 @@ async def _h_create_workout(args):
         duration_minutes=args.get("duration_minutes"),
         description=args.get("description"), distance_km=args.get("distance_km"),
         tss_planned=args.get("tss_planned"), structure=args.get("structure"),
+        structured_workout=args.get("structured_workout"),
         subtype_id=args.get("subtype_id"), tags=args.get("tags"),
         feeling=args.get("feeling"), rpe=args.get("rpe"),
     )
@@ -924,6 +1036,7 @@ async def _h_update_workout(args):
         tags=args.get("tags"), athlete_comment=args.get("athlete_comment"),
         coach_comment=args.get("coach_comment"), feeling=args.get("feeling"),
         rpe=args.get("rpe"), structure=args.get("structure"),
+        structured_workout=args.get("structured_workout"),
     )
 
 @_handler("tp_delete_workout")
@@ -938,6 +1051,16 @@ async def _h_copy_workout(args):
 
 @_handler("tp_reorder_workouts")
 async def _h_reorder(args): return await tp_reorder_workouts(workout_ids=args["workout_ids"])
+
+@_handler("tp_unpair_workout")
+async def _h_unpair(args): return await tp_unpair_workout(workout_id=args["workout_id"])
+
+@_handler("tp_pair_workout")
+async def _h_pair(args):
+    return await tp_pair_workout(
+        completed_workout_id=args["completed_workout_id"],
+        planned_workout_id=args["planned_workout_id"],
+    )
 
 @_handler("tp_get_workout_comments")
 async def _h_get_comments(args): return await tp_get_workout_comments(workout_id=args["workout_id"])
@@ -1110,6 +1233,26 @@ async def _h_create_note(args):
 
 @_handler("tp_delete_note")
 async def _h_delete_note(args): return await tp_delete_note(note_id=args["note_id"])
+
+@_handler("tp_get_note")
+async def _h_get_note(args): return await tp_get_note(note_id=args["note_id"])
+
+@_handler("tp_update_note")
+async def _h_update_note(args):
+    return await tp_update_note(
+        note_id=args["note_id"],
+        title=args.get("title"),
+        description=args.get("description"),
+        date=args.get("date"),
+        is_hidden=args.get("is_hidden"),
+    )
+
+@_handler("tp_get_note_comments")
+async def _h_get_note_comments(args): return await tp_get_note_comments(note_id=args["note_id"])
+
+@_handler("tp_add_note_comment")
+async def _h_add_note_comment(args):
+    return await tp_add_note_comment(note_id=args["note_id"], comment=args["comment"])
 
 @_handler("tp_get_availability")
 async def _h_get_avail(args):

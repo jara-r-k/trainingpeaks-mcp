@@ -12,9 +12,53 @@ from tp_mcp.tools._validation import DateRangeInput, WorkoutIdInput, format_vali
 
 logger = logging.getLogger("tp-mcp")
 
+# Default result rows expected by POST /fitness/v6/athletes/{id}/event (singular).
+DEFAULT_EVENT_RESULTS: list[dict[str, str]] = [
+    {"resultType": "Division"},
+    {"resultType": "Gender"},
+    {"resultType": "Overall"},
+]
+
+
+def _default_create_event_payload(
+    *,
+    athlete_id: int,
+    name: str,
+    event_date_yyyy_mm_dd: str,
+    event_type: str,
+    atp_priority: str,
+    distance_km: float | None,
+    ctl_target: float | None,
+    description: str | None,
+) -> dict[str, Any]:
+    """Build JSON body for POST .../event (v6 singular) per TrainingPeaks web app contract."""
+    payload: dict[str, Any] = {
+        "goals": {},
+        "atpPriority": atp_priority,
+        "legs": [],
+        "eventDate": event_date_yyyy_mm_dd,
+        "name": name,
+        "personId": athlete_id,
+        "eventType": event_type,
+        "workouts": [],
+        "results": [dict(r) for r in DEFAULT_EVENT_RESULTS],
+    }
+    if distance_km is not None:
+        payload["distance"] = float(distance_km)
+        payload["distanceUnits"] = "Kilometers"
+    else:
+        payload["distance"] = None
+        payload["distanceUnits"] = None
+    if ctl_target is not None:
+        payload["ctlTarget"] = ctl_target
+    if description:
+        payload["description"] = description
+    return payload
+
+
 # Non-exhaustive list of known event types (TP API may accept others)
 EVENT_TYPES = [
-    "RoadRunning", "TrailRunning", "TrackRunning", "CrossCountry", "Running",
+    "RoadRunning", "RunningTrack", "TrailRunning", "TrackRunning", "CrossCountry", "Running",
     "RoadCycling", "MountainBiking", "Cyclocross", "TrackCycling", "Cycling",
     "OpenWaterSwimming", "PoolSwimming", "Triathlon", "MultisportTriathlon",
     "Xterra", "Duathlon", "Aquabike", "Aquathon", "Multisport",
@@ -174,9 +218,9 @@ async def tp_create_event(
     Args:
         name: Event name.
         date: Event date (YYYY-MM-DD).
-        event_type: Event type (e.g. 'RoadRunning', 'Triathlon').
-        priority: Priority level ('A', 'B', or 'C').
-        distance_km: Event distance in km.
+        event_type: Event type (e.g. 'RoadRunning', 'RunningTrack', 'Triathlon'); defaults to 'Other'.
+        priority: Priority level ('A', 'B', or 'C'); defaults to 'C' if omitted.
+        distance_km: Event distance in km (sent as distance + distanceUnits=Kilometers).
         ctl_target: Target CTL for the event.
         description: Optional description.
 
@@ -210,23 +254,21 @@ async def tp_create_event(
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        payload: dict[str, Any] = {
-            "athleteId": athlete_id,
-            "name": params.name,
-            "eventDate": f"{params.date}T00:00:00",
-        }
-        if params.event_type:
-            payload["eventType"] = params.event_type
-        if params.priority:
-            payload["priority"] = params.priority
-        if params.distance_km is not None:
-            payload["distance"] = params.distance_km * 1000
-        if params.ctl_target is not None:
-            payload["ctlTarget"] = params.ctl_target
-        if params.description:
-            payload["description"] = params.description
+        # POST /event (singular) — not /events; matches app.trainingpeaks.com HAR (v6).
+        event_type = params.event_type or "Other"
+        atp_priority = params.priority or "C"
+        payload = _default_create_event_payload(
+            athlete_id=int(athlete_id),
+            name=params.name,
+            event_date_yyyy_mm_dd=params.date,
+            event_type=event_type,
+            atp_priority=atp_priority,
+            distance_km=params.distance_km,
+            ctl_target=params.ctl_target,
+            description=params.description,
+        )
 
-        endpoint = f"/fitness/v6/athletes/{athlete_id}/events"
+        endpoint = f"/fitness/v6/athletes/{athlete_id}/event"
         response = await client.post(endpoint, json=payload)
 
         if response.is_error:
@@ -327,13 +369,15 @@ async def tp_update_event(
             existing["name"] = name
         if date is not None:
             dt_date.fromisoformat(date)
-            existing["eventDate"] = f"{date}T00:00:00"
+            # v6 create uses YYYY-MM-DD; keep updates consistent with list/GET shape when possible.
+            existing["eventDate"] = date
         if event_type is not None:
             existing["eventType"] = event_type
         if priority is not None:
             existing["atpPriority"] = priority
         if distance_km is not None:
-            existing["distance"] = distance_km * 1000
+            existing["distance"] = float(distance_km)
+            existing["distanceUnits"] = "Kilometers"
         if ctl_target is not None:
             existing["ctlTarget"] = ctl_target
         if description is not None:
@@ -383,7 +427,7 @@ async def tp_delete_event(event_id: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        endpoint = f"/fitness/v6/athletes/{athlete_id}/events/{validated.workout_id}"
+        endpoint = f"/fitness/v6/athletes/{athlete_id}/event/{validated.workout_id}"
         response = await client.delete(endpoint)
 
         if response.is_error:
@@ -513,6 +557,236 @@ async def tp_delete_note(note_id: str) -> dict[str, Any]:
             "success": True,
             "message": f"Note {validated.workout_id} deleted.",
         }
+
+
+async def tp_get_note(note_id: str) -> dict[str, Any]:
+    """Get a calendar note by ID.
+
+    Args:
+        note_id: Note ID.
+
+    Returns:
+        Dict with note fields or error.
+    """
+    try:
+        validated = WorkoutIdInput(workout_id=note_id)
+    except (ValidationError, ValueError) as e:
+        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": msg}
+
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return {"isError": True, "error_code": "AUTH_INVALID",
+                    "message": "Could not get athlete ID. Re-authenticate."}
+
+        endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        response = await client.get(endpoint)
+
+        if response.is_error:
+            return {
+                "isError": True,
+                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "message": response.message,
+            }
+
+        d = response.data or {}
+        note_date_str = d.get("noteDate", "")
+        if note_date_str and "T" in note_date_str:
+            note_date_str = note_date_str.split("T")[0]
+
+        return {
+            "note": {
+                "id": d.get("id"),
+                "title": d.get("title"),
+                "description": d.get("description"),
+                "date": note_date_str,
+                "is_hidden": d.get("isHidden", False),
+                "created_date": d.get("createdDate"),
+                "modified_date": d.get("modifiedDate"),
+            }
+        }
+
+
+async def tp_update_note(
+    note_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    date: str | None = None,
+    is_hidden: bool | None = None,
+) -> dict[str, Any]:
+    """Update a calendar note.
+
+    Args:
+        note_id: Note ID.
+        title: New title (optional).
+        description: New description (optional).
+        date: New note date YYYY-MM-DD (optional).
+        is_hidden: Set visibility (optional).
+
+    Returns:
+        Dict with updated note or error.
+    """
+    if title is None and description is None and date is None and is_hidden is None:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Provide at least one field to update (title, description, date, is_hidden).",
+        }
+
+    if title is not None and not title.strip():
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Title must not be empty.",
+        }
+
+    try:
+        validated = WorkoutIdInput(workout_id=note_id)
+    except (ValidationError, ValueError) as e:
+        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": msg}
+
+    if date is not None:
+        try:
+            from datetime import date as date_type
+            date_type.fromisoformat(date)
+        except ValueError:
+            return {"isError": True, "error_code": "VALIDATION_ERROR",
+                    "message": f"Invalid date: {date}"}
+
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return {"isError": True, "error_code": "AUTH_INVALID",
+                    "message": "Could not get athlete ID. Re-authenticate."}
+
+        get_endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        get_response = await client.get(get_endpoint)
+        if get_response.is_error:
+            return {
+                "isError": True,
+                "error_code": get_response.error_code.value if get_response.error_code else "API_ERROR",
+                "message": get_response.message,
+            }
+
+        payload: dict[str, Any] = dict(get_response.data or {})
+        if title is not None:
+            payload["title"] = title.strip()
+        if description is not None:
+            payload["description"] = description
+        if date is not None:
+            payload["noteDate"] = f"{date}T00:00:00"
+        if is_hidden is not None:
+            payload["isHidden"] = is_hidden
+
+        put_response = await client.put(get_endpoint, json=payload)
+        if put_response.is_error:
+            return {
+                "isError": True,
+                "error_code": put_response.error_code.value if put_response.error_code else "API_ERROR",
+                "message": put_response.message,
+            }
+
+        d = put_response.data or {}
+        note_date_str = d.get("noteDate", "")
+        if note_date_str and "T" in note_date_str:
+            note_date_str = note_date_str.split("T")[0]
+
+        return {
+            "success": True,
+            "note": {
+                "id": d.get("id"),
+                "title": d.get("title"),
+                "description": d.get("description"),
+                "date": note_date_str,
+                "is_hidden": d.get("isHidden", False),
+                "modified_date": d.get("modifiedDate"),
+            },
+        }
+
+
+async def tp_get_note_comments(note_id: str) -> dict[str, Any]:
+    """Get comments for a calendar note.
+
+    Args:
+        note_id: Note ID.
+
+    Returns:
+        Dict with comments list and count, or error.
+    """
+    try:
+        validated = WorkoutIdInput(workout_id=note_id)
+    except (ValidationError, ValueError) as e:
+        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": msg}
+
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return {"isError": True, "error_code": "AUTH_INVALID",
+                    "message": "Could not get athlete ID. Re-authenticate."}
+
+        endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}/comments"
+        response = await client.get(endpoint)
+
+        if response.is_error:
+            return {
+                "isError": True,
+                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "message": response.message,
+            }
+
+        raw_comments: list[dict[str, Any]] = response.data if isinstance(response.data, list) else []
+        comments = [
+            {
+                "id": c.get("calendarNoteCommentStreamId"),
+                "comment": c.get("comment"),
+                "commenter": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip(),
+                "created_at": c.get("createdDateTimeUtc"),
+            }
+            for c in raw_comments
+        ]
+        return {"comments": comments, "count": len(comments)}
+
+
+async def tp_add_note_comment(note_id: str, comment: str) -> dict[str, Any]:
+    """Add a comment to a calendar note.
+
+    Args:
+        note_id: Note ID.
+        comment: Comment text.
+
+    Returns:
+        Dict with success confirmation or error.
+    """
+    try:
+        validated = WorkoutIdInput(workout_id=note_id)
+    except (ValidationError, ValueError) as e:
+        msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
+        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": msg}
+
+    if not comment or not comment.strip():
+        return {"isError": True, "error_code": "VALIDATION_ERROR",
+                "message": "Comment must not be empty."}
+
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return {"isError": True, "error_code": "AUTH_INVALID",
+                    "message": "Could not get athlete ID. Re-authenticate."}
+
+        endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}/comment"
+        response = await client.put(endpoint, json={"Comment": comment.strip()})
+
+        if response.is_error:
+            return {
+                "isError": True,
+                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "message": response.message,
+            }
+
+        return {"success": True, "note_id": validated.workout_id}
 
 
 async def tp_get_availability(start_date: str, end_date: str) -> dict[str, Any]:

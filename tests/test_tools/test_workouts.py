@@ -1,11 +1,12 @@
 """Tests for workout tools."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from tp_mcp.client.http import APIResponse, ErrorCode
-from tp_mcp.tools.workouts import tp_create_workout, tp_get_workout, tp_get_workouts
+from tp_mcp.tools.workouts import tp_create_workout, tp_get_workout, tp_get_workouts, tp_pair_workout, tp_unpair_workout
 
 
 class TestTpGetWorkouts:
@@ -27,6 +28,36 @@ class TestTpGetWorkouts:
         assert "isError" not in result or not result.get("isError")
         assert result["count"] == 2
         assert len(result["workouts"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_workouts_exposes_planned_and_actual_tss(self, mock_api_responses):
+        """tss_planned and tss_actual are exposed alongside the coalesced tss.
+
+        Downstream tools (e.g. compliance dashboards that compare planned vs. actual
+        on the same row) need both values; the coalesced `tss` loses the planned
+        intensity once a workout is completed.
+        """
+        workouts_response = APIResponse(success=True, data=mock_api_responses["workouts"])
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=workouts_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workouts("2025-01-08", "2025-01-09")
+
+        # First fixture workout is completed with both planned+actual TSS.
+        completed = next(w for w in result["workouts"] if w["type"] == "completed")
+        assert completed["tss_planned"] == 80
+        assert completed["tss_actual"] == 75
+        assert completed["tss"] == 75  # backward-compatible coalesced value unchanged
+
+        # Second fixture workout is planned-only (no actual yet).
+        planned = next(w for w in result["workouts"] if w["type"] == "planned")
+        assert planned["tss_planned"] == 40
+        assert planned["tss_actual"] is None
+        assert planned["tss"] == 40
 
     @pytest.mark.asyncio
     async def test_get_workouts_filter_completed(self, mock_api_responses):
@@ -108,6 +139,53 @@ class TestTpGetWorkout:
         assert result["metrics"]["avg_power"] == 200
 
     @pytest.mark.asyncio
+    async def test_get_workout_includes_structured_workout(self, mock_api_responses):
+        """Structured workout payload should be returned when present."""
+        workout_data = dict(mock_api_responses["workout_detail"])
+        workout_data["structure"] = {
+            "structure": [],
+            "polyline": [],
+            "primaryLengthMetric": "duration",
+            "primaryIntensityMetric": "percentOfFtp",
+            "primaryIntensityTargetOrRange": "range",
+        }
+        workout_response = APIResponse(success=True, data=workout_data)
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=workout_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout("1001")
+
+        assert result["structured_workout"] == workout_data["structure"]
+
+    @pytest.mark.asyncio
+    async def test_get_workout_decodes_structured_workout_string(self, mock_api_responses):
+        """Structured workout JSON strings should be decoded in responses."""
+        workout_data = dict(mock_api_responses["workout_detail"])
+        structured_workout = {
+            "structure": [],
+            "polyline": [],
+            "primaryLengthMetric": "duration",
+            "primaryIntensityMetric": "percentOfFtp",
+            "primaryIntensityTargetOrRange": "range",
+        }
+        workout_data["structure"] = json.dumps(structured_workout)
+        workout_response = APIResponse(success=True, data=workout_data)
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=workout_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout("1001")
+
+        assert result["structured_workout"] == structured_workout
+
+    @pytest.mark.asyncio
     async def test_get_workout_not_found(self):
         """Test workout not found."""
         workout_response = APIResponse(
@@ -170,6 +248,38 @@ class TestTpCreateWorkout:
         assert payload["workoutTypeValueId"] == 3
         assert payload["title"] == "Morning Run"
         assert payload["totalTimePlanned"] == 1.0  # 60 min -> 1.0 hours
+
+    @pytest.mark.asyncio
+    async def test_create_workout_datetime_preserves_time(self):
+        """Datetime input should schedule the workout with the provided time."""
+        create_response = APIResponse(
+            success=True,
+            data={
+                "workoutId": 5002,
+                "title": "Afternoon Run",
+                "workoutDay": "2026-01-10T00:00:00",
+                "startTimePlanned": "2026-01-10T16:45:00",
+            },
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=create_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_create_workout(
+                date_str="2026-01-10T16:45:00",
+                sport="Run",
+                title="Afternoon Run",
+                duration_minutes=45,
+            )
+
+        assert result["success"] is True
+        assert result["date"] == "2026-01-10T16:45:00"
+        payload = mock_instance.post.call_args[1]["json"]
+        assert payload["workoutDay"] == "2026-01-10T00:00:00"
+        assert payload["startTimePlanned"] == "2026-01-10T16:45:00"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -372,6 +482,214 @@ class TestTpCreateWorkout:
                 sport="Swim",
                 title="Pool Session",
                 duration_minutes=45,
+            )
+
+        assert result["isError"] is True
+        assert result["error_code"] == "API_ERROR"
+
+
+class TestTpUnpairWorkout:
+    """Tests for tp_unpair_workout tool."""
+
+    @pytest.mark.asyncio
+    async def test_unpair_success(self):
+        """Test successful unpair of a paired workout."""
+        split_response = APIResponse(
+            success=True,
+            data={
+                "completedWorkouts": [
+                    {"workoutId": 111, "title": None, "totalTime": 0.75},
+                ],
+                "plannedWorkout": {
+                    "workoutId": 222,
+                    "title": "EASY run",
+                    "totalTimePlanned": 0.75,
+                },
+            },
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=split_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_unpair_workout(workout_id="111")
+
+        assert result["success"] is True
+        assert result["completed_workout_ids"] == [111]
+        assert result["planned_workout_id"] == 222
+        mock_instance.post.assert_called_once()
+        call_args = mock_instance.post.call_args
+        assert "/commands/workouts/111/split" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_unpair_invalid_id(self):
+        """Test unpair with invalid workout ID."""
+        result = await tp_unpair_workout(workout_id="abc")
+
+        assert result["isError"] is True
+        assert result["error_code"] == "VALIDATION_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_unpair_auth_error(self):
+        """Test unpair when not authenticated."""
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=None)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_unpair_workout(workout_id="111")
+
+        assert result["isError"] is True
+        assert result["error_code"] == "AUTH_INVALID"
+
+    @pytest.mark.asyncio
+    async def test_unpair_api_error(self):
+        """Test unpair when API returns an error."""
+        error_response = APIResponse(
+            success=False, error_code=ErrorCode.API_ERROR, message="Server error"
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=error_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_unpair_workout(workout_id="111")
+
+        assert result["isError"] is True
+        assert result["error_code"] == "API_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_unpair_unexpected_response(self):
+        """Test unpair when API returns a non-dict response."""
+        unexpected_response = APIResponse(
+            success=True,
+            data=[{"unexpected": "format"}],
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=unexpected_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_unpair_workout(workout_id="111")
+
+        assert result["isError"] is True
+        assert result["error_code"] == "API_ERROR"
+
+
+class TestTpPairWorkout:
+    """Tests for tp_pair_workout tool."""
+
+    @pytest.mark.asyncio
+    async def test_pair_success(self):
+        """Test successful pairing of completed + planned workouts."""
+        combine_response = APIResponse(
+            success=True,
+            data={
+                "workoutId": 111,
+                "title": "EASY run",
+                "totalTime": 0.75,
+                "totalTimePlanned": 0.75,
+            },
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=combine_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_pair_workout(
+                completed_workout_id="111", planned_workout_id="222"
+            )
+
+        assert result["success"] is True
+        assert result["workout_id"] == 111
+        assert result["title"] == "EASY run"
+        mock_instance.post.assert_called_once()
+        call_args = mock_instance.post.call_args
+        assert "/commands/workouts/combine" in call_args[0][0]
+        payload = call_args[1]["json"]
+        assert payload["athleteId"] == 123
+        assert payload["completedWorkoutId"] == 111
+        assert payload["plannedWorkoutId"] == 222
+
+    @pytest.mark.asyncio
+    async def test_pair_invalid_completed_id(self):
+        """Test pair with invalid completed workout ID."""
+        result = await tp_pair_workout(
+            completed_workout_id="abc", planned_workout_id="222"
+        )
+
+        assert result["isError"] is True
+        assert "completed_workout_id" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_pair_invalid_planned_id(self):
+        """Test pair with invalid planned workout ID."""
+        result = await tp_pair_workout(
+            completed_workout_id="111", planned_workout_id="abc"
+        )
+
+        assert result["isError"] is True
+        assert "planned_workout_id" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_pair_auth_error(self):
+        """Test pair when not authenticated."""
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=None)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_pair_workout(
+                completed_workout_id="111", planned_workout_id="222"
+            )
+
+        assert result["isError"] is True
+        assert result["error_code"] == "AUTH_INVALID"
+
+    @pytest.mark.asyncio
+    async def test_pair_api_error(self):
+        """Test pair when API returns an error."""
+        error_response = APIResponse(
+            success=False, error_code=ErrorCode.NOT_FOUND, message="Not found"
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=error_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_pair_workout(
+                completed_workout_id="111", planned_workout_id="222"
+            )
+
+        assert result["isError"] is True
+        assert result["error_code"] == "NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_pair_unexpected_response(self):
+        """Test pair when API returns a non-dict response."""
+        unexpected_response = APIResponse(
+            success=True,
+            data=[{"unexpected": "format"}],
+        )
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=unexpected_response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_pair_workout(
+                completed_workout_id="111", planned_workout_id="222"
             )
 
         assert result["isError"] is True

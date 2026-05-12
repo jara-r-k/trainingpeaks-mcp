@@ -8,6 +8,7 @@ from tp_mcp.tools._validation import (
     DateRangeInput,
     FitnessInput,
     PeaksInput,
+    UpdateWorkoutInput,
     WorkoutIdInput,
     format_validation_error,
 )
@@ -74,6 +75,15 @@ class TestCreateWorkoutInput:
         )
         assert result.sport == "Run"
         assert result.duration_minutes == 60
+
+    def test_valid_datetime(self):
+        result = CreateWorkoutInput(
+            date="2025-06-01T09:30:00",
+            sport="Run",
+            title="Morning Run",
+            duration_minutes=60,
+        )
+        assert result.date.isoformat() == "2025-06-01T09:30:00"
 
     def test_empty_title(self):
         with pytest.raises(ValidationError):
@@ -170,6 +180,24 @@ class TestPeaksInput:
     def test_invalid_pr_type(self):
         with pytest.raises(ValidationError, match="invalid_type"):
             PeaksInput(sport="Bike", pr_type="invalid_type")
+
+
+class TestUpdateWorkoutInput:
+    """Tests for UpdateWorkoutInput validation."""
+
+    def test_accepts_date_only(self):
+        result = UpdateWorkoutInput(workout_id="123", date="2026-04-14")
+        assert result.date is not None
+        assert result.date.isoformat() == "2026-04-14"
+
+    def test_accepts_datetime(self):
+        result = UpdateWorkoutInput(workout_id="123", date="2026-04-14T16:45:00")
+        assert result.date is not None
+        assert result.date.isoformat() == "2026-04-14T16:45:00"
+
+    def test_rejects_invalid_datetime(self):
+        with pytest.raises(ValidationError):
+            UpdateWorkoutInput(workout_id="123", date="2026-04-14 99:45:00")
 
 
 class TestFitnessInput:
