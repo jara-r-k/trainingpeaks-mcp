@@ -50,6 +50,7 @@ from tp_mcp.tools import (
     tp_get_next_event,
     tp_get_note,
     tp_get_note_comments,
+    tp_get_notes,
     tp_get_nutrition,
     tp_get_peaks,
     tp_get_pool_length_settings,
@@ -198,16 +199,28 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "date": {"type": "string", "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"},
+                "date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+                },
                 "sport": {"type": "string", "enum": list(SPORT_TYPE_MAP.keys())},
                 "title": {"type": "string", "description": "Workout title"},
                 "duration_minutes": {
                     "type": "integer",
                     "description": "Planned duration in minutes (optional if structure provided)",
                 },
-                "description": {"type": "string", "description": "Optional description"},
-                "distance_km": {"type": "number", "description": "Optional distance in km"},
-                "tss_planned": {"type": "number", "description": "Optional planned TSS"},
+                "description": {
+                    "type": "string",
+                    "description": "Optional description",
+                },
+                "distance_km": {
+                    "type": "number",
+                    "description": "Optional distance in km",
+                },
+                "tss_planned": {
+                    "type": "number",
+                    "description": "Optional planned TSS",
+                },
                 "structure": {
                     "type": ["object", "string"],
                     "description": STRUCTURE_DESCRIPTION,
@@ -220,7 +233,10 @@ TOOLS = [
                     "type": "integer",
                     "description": "Workout subtype ID from tp_get_workout_types",
                 },
-                "tags": {"type": "string", "description": "Optional comma-separated tags"},
+                "tags": {
+                    "type": "string",
+                    "description": "Optional comma-separated tags",
+                },
                 "feeling": {"type": "integer", "description": "Feeling score 0-10"},
                 "rpe": {"type": "integer", "description": "RPE score 1-10"},
             },
@@ -242,7 +258,10 @@ TOOLS = [
                 "subtype_id": {"type": "integer"},
                 "title": {"type": "string"},
                 "description": {"type": "string"},
-                "date": {"type": "string", "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"},
+                "date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+                },
                 "duration_minutes": {"type": "number"},
                 "distance_km": {"type": "number"},
                 "tss_planned": {"type": "number"},
@@ -368,7 +387,10 @@ TOOLS = [
             "properties": {
                 "workout_id": {"type": "string", "description": "Workout ID"},
                 "file_path": {"type": "string", "description": "Path to file on disk"},
-                "file_data_base64": {"type": "string", "description": "Base64-encoded file bytes"},
+                "file_data_base64": {
+                    "type": "string",
+                    "description": "Base64-encoded file bytes",
+                },
                 "workout_day": {
                     "type": "string",
                     "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS. Auto-fetched if omitted.",
@@ -387,8 +409,14 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "workout_id": {"type": "string", "description": "Workout ID"},
-                "file_id": {"type": "string", "description": "File ID from tp_get_workout"},
-                "output_path": {"type": "string", "description": "Directory or full path to save file"},
+                "file_id": {
+                    "type": "string",
+                    "description": "File ID from tp_get_workout",
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Directory or full path to save file",
+                },
             },
             "required": ["workout_id", "file_id"],
         },
@@ -400,7 +428,10 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "workout_id": {"type": "string", "description": "Workout ID"},
-                "file_id": {"type": "string", "description": "File ID from tp_get_workout"},
+                "file_id": {
+                    "type": "string",
+                    "description": "File ID from tp_get_workout",
+                },
             },
             "required": ["workout_id", "file_id"],
         },
@@ -442,7 +473,10 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "sport": {"type": "string", "enum": ["Bike", "Run"]},
-                "pr_type": {"type": "string", "description": "Bike: power1min/5min/20min. Run: speed5K/10K/Half"},
+                "pr_type": {
+                    "type": "string",
+                    "description": "Bike: power1min/5min/20min. Run: speed5K/10K/Half",
+                },
                 "days": {"type": "integer", "default": 3650},
             },
             "required": ["sport", "pr_type"],
@@ -465,7 +499,8 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "days": {
-                    "type": "integer", "default": 90,
+                    "type": "integer",
+                    "default": 90,
                     "description": "Days from today. Ignored if dates provided.",
                 },
                 "start_date": {"type": "string", "description": "YYYY-MM-DD"},
@@ -524,7 +559,11 @@ TOOLS = [
                 "threshold_hr": {"type": "integer"},
                 "max_hr": {"type": "integer"},
                 "resting_hr": {"type": "integer"},
-                "workout_type": {"type": "string", "enum": ["general", "bike"], "default": "general"},
+                "workout_type": {
+                    "type": "string",
+                    "enum": ["general", "bike"],
+                    "default": "general",
+                },
             },
             "required": [],
         },
@@ -535,8 +574,14 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "run_threshold_pace": {"type": "string", "description": "e.g. '4:30/km'"},
-                "swim_threshold_pace": {"type": "string", "description": "e.g. '1:45/100m'"},
+                "run_threshold_pace": {
+                    "type": "string",
+                    "description": "e.g. '4:30/km'",
+                },
+                "swim_threshold_pace": {
+                    "type": "string",
+                    "description": "e.g. '1:45/100m'",
+                },
             },
             "required": [],
         },
@@ -606,7 +651,11 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["bike", "shoe", "all"], "default": "all"},
+                "type": {
+                    "type": "string",
+                    "enum": ["bike", "shoe", "all"],
+                    "default": "all",
+                },
             },
             "required": [],
         },
@@ -766,6 +815,18 @@ TOOLS = [
         },
     ),
     Tool(
+        name="tp_get_notes",
+        description="List calendar notes in a date range (hidden notes filtered).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    ),
+    Tool(
         name="tp_update_note",
         description="Update a calendar note. Provide at least one of: title, description, date, is_hidden.",
         inputSchema={
@@ -904,7 +965,10 @@ TOOLS = [
                 "duration_hours": {"type": "number"},
                 "tss": {"type": "number"},
                 "description": {"type": "string"},
-                "structure": {"type": "object", "description": "Interval structure (nested object)"},
+                "structure": {
+                    "type": "object",
+                    "description": "Interval structure (nested object)",
+                },
             },
             "required": ["library_id", "name", "sport_family_id", "sport_type_id"],
         },
@@ -953,8 +1017,11 @@ TOOLS = [
 # Coach account support: inject 'athlete' parameter into all applicable tools
 # ---------------------------------------------------------------------------
 _ATHLETE_EXEMPT_TOOLS = {
-    "tp_auth_status", "tp_refresh_auth", "tp_validate_structure",
-    "tp_list_athletes", "tp_get_workout_types",
+    "tp_auth_status",
+    "tp_refresh_auth",
+    "tp_validate_structure",
+    "tp_list_athletes",
+    "tp_get_workout_types",
 }
 
 _ATHLETE_PARAM = {
@@ -983,77 +1050,114 @@ _TOOL_HANDLERS: dict[str, Any] = {}
 
 def _handler(name: str):
     """Decorator to register a tool handler."""
+
     def decorator(fn):
         _TOOL_HANDLERS[name] = fn
         return fn
+
     return decorator
 
 
 # --- Auth & Profile ---
 @_handler("tp_auth_status")
-async def _h_auth_status(args): return await tp_auth_status()
+async def _h_auth_status(args):
+    return await tp_auth_status()
+
 
 @_handler("tp_get_profile")
-async def _h_get_profile(args): return await tp_get_profile()
+async def _h_get_profile(args):
+    return await tp_get_profile()
+
 
 @_handler("tp_list_athletes")
-async def _h_list_athletes(args): return await tp_list_athletes()
+async def _h_list_athletes(args):
+    return await tp_list_athletes()
+
 
 @_handler("tp_refresh_auth")
-async def _h_refresh_auth(args): return await tp_refresh_auth(browser=args.get("browser", "auto"))
+async def _h_refresh_auth(args):
+    return await tp_refresh_auth(browser=args.get("browser", "auto"))
+
 
 # --- Workouts ---
 @_handler("tp_get_workouts")
 async def _h_get_workouts(args):
     return await tp_get_workouts(
-        start_date=args["start_date"], end_date=args["end_date"],
+        start_date=args["start_date"],
+        end_date=args["end_date"],
         workout_filter=args.get("type", "all"),
     )
 
+
 @_handler("tp_get_workout")
-async def _h_get_workout(args): return await tp_get_workout(workout_id=args["workout_id"])
+async def _h_get_workout(args):
+    return await tp_get_workout(workout_id=args["workout_id"])
+
 
 @_handler("tp_create_workout")
 async def _h_create_workout(args):
     return await tp_create_workout(
-        date_str=args["date"], sport=args["sport"], title=args["title"],
+        date_str=args["date"],
+        sport=args["sport"],
+        title=args["title"],
         duration_minutes=args.get("duration_minutes"),
-        description=args.get("description"), distance_km=args.get("distance_km"),
-        tss_planned=args.get("tss_planned"), structure=args.get("structure"),
+        description=args.get("description"),
+        distance_km=args.get("distance_km"),
+        tss_planned=args.get("tss_planned"),
+        structure=args.get("structure"),
         structured_workout=args.get("structured_workout"),
-        subtype_id=args.get("subtype_id"), tags=args.get("tags"),
-        feeling=args.get("feeling"), rpe=args.get("rpe"),
+        subtype_id=args.get("subtype_id"),
+        tags=args.get("tags"),
+        feeling=args.get("feeling"),
+        rpe=args.get("rpe"),
     )
+
 
 @_handler("tp_update_workout")
 async def _h_update_workout(args):
     return await tp_update_workout(
-        workout_id=args["workout_id"], sport=args.get("sport"),
-        subtype_id=args.get("subtype_id"), title=args.get("title"),
-        description=args.get("description"), date=args.get("date"),
+        workout_id=args["workout_id"],
+        sport=args.get("sport"),
+        subtype_id=args.get("subtype_id"),
+        title=args.get("title"),
+        description=args.get("description"),
+        date=args.get("date"),
         duration_minutes=args.get("duration_minutes"),
-        distance_km=args.get("distance_km"), tss_planned=args.get("tss_planned"),
-        tags=args.get("tags"), athlete_comment=args.get("athlete_comment"),
-        coach_comment=args.get("coach_comment"), feeling=args.get("feeling"),
-        rpe=args.get("rpe"), structure=args.get("structure"),
+        distance_km=args.get("distance_km"),
+        tss_planned=args.get("tss_planned"),
+        tags=args.get("tags"),
+        athlete_comment=args.get("athlete_comment"),
+        coach_comment=args.get("coach_comment"),
+        feeling=args.get("feeling"),
+        rpe=args.get("rpe"),
+        structure=args.get("structure"),
         structured_workout=args.get("structured_workout"),
     )
 
+
 @_handler("tp_delete_workout")
-async def _h_delete_workout(args): return await tp_delete_workout(workout_id=args["workout_id"])
+async def _h_delete_workout(args):
+    return await tp_delete_workout(workout_id=args["workout_id"])
+
 
 @_handler("tp_copy_workout")
 async def _h_copy_workout(args):
     return await tp_copy_workout(
-        workout_id=args["workout_id"], target_date=args["target_date"],
+        workout_id=args["workout_id"],
+        target_date=args["target_date"],
         title=args.get("title"),
     )
 
+
 @_handler("tp_reorder_workouts")
-async def _h_reorder(args): return await tp_reorder_workouts(workout_ids=args["workout_ids"])
+async def _h_reorder(args):
+    return await tp_reorder_workouts(workout_ids=args["workout_ids"])
+
 
 @_handler("tp_unpair_workout")
-async def _h_unpair(args): return await tp_unpair_workout(workout_id=args["workout_id"])
+async def _h_unpair(args):
+    return await tp_unpair_workout(workout_id=args["workout_id"])
+
 
 @_handler("tp_pair_workout")
 async def _h_pair(args):
@@ -1062,12 +1166,18 @@ async def _h_pair(args):
         planned_workout_id=args["planned_workout_id"],
     )
 
+
 @_handler("tp_get_workout_comments")
-async def _h_get_comments(args): return await tp_get_workout_comments(workout_id=args["workout_id"])
+async def _h_get_comments(args):
+    return await tp_get_workout_comments(workout_id=args["workout_id"])
+
 
 @_handler("tp_add_workout_comment")
 async def _h_add_comment(args):
-    return await tp_add_workout_comment(workout_id=args["workout_id"], comment=args["comment"])
+    return await tp_add_workout_comment(
+        workout_id=args["workout_id"], comment=args["comment"]
+    )
+
 
 @_handler("tp_upload_workout_file")
 async def _h_upload_workout_file(args):
@@ -1078,6 +1188,7 @@ async def _h_upload_workout_file(args):
         workout_day=args.get("workout_day"),
     )
 
+
 @_handler("tp_download_workout_file")
 async def _h_download_workout_file(args):
     return await tp_download_workout_file(
@@ -1086,6 +1197,7 @@ async def _h_download_workout_file(args):
         output_path=args.get("output_path"),
     )
 
+
 @_handler("tp_delete_workout_file")
 async def _h_delete_workout_file(args):
     return await tp_delete_workout_file(
@@ -1093,47 +1205,70 @@ async def _h_delete_workout_file(args):
         file_id=args["file_id"],
     )
 
+
 @_handler("tp_validate_structure")
-async def _h_validate_structure(args): return await tp_validate_structure(structure=args["structure"])
+async def _h_validate_structure(args):
+    return await tp_validate_structure(structure=args["structure"])
+
 
 # --- Analysis & Peaks ---
 @_handler("tp_get_workout_prs")
-async def _h_get_prs(args): return await tp_get_workout_prs(workout_id=args["workout_id"])
+async def _h_get_prs(args):
+    return await tp_get_workout_prs(workout_id=args["workout_id"])
+
 
 @_handler("tp_get_peaks")
 async def _h_get_peaks(args):
-    return await tp_get_peaks(sport=args["sport"], pr_type=args["pr_type"], days=args.get("days", 3650))
+    return await tp_get_peaks(
+        sport=args["sport"], pr_type=args["pr_type"], days=args.get("days", 3650)
+    )
+
 
 @_handler("tp_analyze_workout")
-async def _h_analyze(args): return await tp_analyze_workout(workout_id=args["workout_id"])
+async def _h_analyze(args):
+    return await tp_analyze_workout(workout_id=args["workout_id"])
+
 
 # --- Fitness & Summary ---
 @_handler("tp_get_fitness")
 async def _h_get_fitness(args):
     return await tp_get_fitness(
-        days=args.get("days", 90), start_date=args.get("start_date"),
+        days=args.get("days", 90),
+        start_date=args.get("start_date"),
         end_date=args.get("end_date"),
     )
 
+
 @_handler("tp_get_weekly_summary")
-async def _h_weekly_summary(args): return await tp_get_weekly_summary(week_of=args.get("week_of"))
+async def _h_weekly_summary(args):
+    return await tp_get_weekly_summary(week_of=args.get("week_of"))
+
 
 @_handler("tp_get_atp")
-async def _h_get_atp(args): return await tp_get_atp(start_date=args["start_date"], end_date=args["end_date"])
+async def _h_get_atp(args):
+    return await tp_get_atp(start_date=args["start_date"], end_date=args["end_date"])
+
 
 # --- Athlete Settings ---
 @_handler("tp_get_athlete_settings")
-async def _h_get_settings(args): return await tp_get_athlete_settings()
+async def _h_get_settings(args):
+    return await tp_get_athlete_settings()
+
 
 @_handler("tp_update_ftp")
-async def _h_update_ftp(args): return await tp_update_ftp(ftp=args["ftp"])
+async def _h_update_ftp(args):
+    return await tp_update_ftp(ftp=args["ftp"])
+
 
 @_handler("tp_update_hr_zones")
 async def _h_update_hr(args):
     return await tp_update_hr_zones(
-        threshold_hr=args.get("threshold_hr"), max_hr=args.get("max_hr"),
-        resting_hr=args.get("resting_hr"), workout_type=args.get("workout_type", "general"),
+        threshold_hr=args.get("threshold_hr"),
+        max_hr=args.get("max_hr"),
+        resting_hr=args.get("resting_hr"),
+        workout_type=args.get("workout_type", "general"),
     )
+
 
 @_handler("tp_update_speed_zones")
 async def _h_update_speed(args):
@@ -1142,100 +1277,162 @@ async def _h_update_speed(args):
         swim_threshold_pace=args.get("swim_threshold_pace"),
     )
 
+
 @_handler("tp_update_nutrition")
-async def _h_update_nutrition(args): return await tp_update_nutrition(planned_calories=args["planned_calories"])
+async def _h_update_nutrition(args):
+    return await tp_update_nutrition(planned_calories=args["planned_calories"])
+
 
 @_handler("tp_get_pool_length_settings")
-async def _h_pool(args): return await tp_get_pool_length_settings()
+async def _h_pool(args):
+    return await tp_get_pool_length_settings()
+
 
 # --- Health Metrics ---
 @_handler("tp_log_metrics")
 async def _h_log_metrics(args):
     return await tp_log_metrics(
-        date=args["date"], weight_kg=args.get("weight_kg"), pulse=args.get("pulse"),
-        hrv=args.get("hrv"), sleep_hours=args.get("sleep_hours"), spo2=args.get("spo2"),
-        steps=args.get("steps"), rmr=args.get("rmr"), injury=args.get("injury"),
+        date=args["date"],
+        weight_kg=args.get("weight_kg"),
+        pulse=args.get("pulse"),
+        hrv=args.get("hrv"),
+        sleep_hours=args.get("sleep_hours"),
+        spo2=args.get("spo2"),
+        steps=args.get("steps"),
+        rmr=args.get("rmr"),
+        injury=args.get("injury"),
     )
+
 
 @_handler("tp_get_metrics")
 async def _h_get_metrics(args):
-    return await tp_get_metrics(start_date=args["start_date"], end_date=args["end_date"])
+    return await tp_get_metrics(
+        start_date=args["start_date"], end_date=args["end_date"]
+    )
+
 
 @_handler("tp_get_nutrition")
 async def _h_get_nutrition(args):
-    return await tp_get_nutrition(start_date=args["start_date"], end_date=args["end_date"])
+    return await tp_get_nutrition(
+        start_date=args["start_date"], end_date=args["end_date"]
+    )
+
 
 # --- Equipment ---
 @_handler("tp_get_equipment")
-async def _h_get_equipment(args): return await tp_get_equipment(type=args.get("type", "all"))
+async def _h_get_equipment(args):
+    return await tp_get_equipment(type=args.get("type", "all"))
+
 
 @_handler("tp_create_equipment")
 async def _h_create_equipment(args):
     return await tp_create_equipment(
-        name=args["name"], type=args["type"], brand=args.get("brand"),
-        model=args.get("model"), notes=args.get("notes"),
+        name=args["name"],
+        type=args["type"],
+        brand=args.get("brand"),
+        model=args.get("model"),
+        notes=args.get("notes"),
         date_of_purchase=args.get("date_of_purchase"),
         starting_distance_km=args.get("starting_distance_km"),
         max_distance_km=args.get("max_distance_km"),
         is_default=args.get("is_default", False),
-        wheels=args.get("wheels"), crank_length_mm=args.get("crank_length_mm"),
+        wheels=args.get("wheels"),
+        crank_length_mm=args.get("crank_length_mm"),
     )
+
 
 @_handler("tp_update_equipment")
 async def _h_update_equipment(args):
     return await tp_update_equipment(
-        equipment_id=args["equipment_id"], name=args.get("name"),
-        brand=args.get("brand"), model=args.get("model"), notes=args.get("notes"),
-        retired=args.get("retired"), is_default=args.get("is_default"),
+        equipment_id=args["equipment_id"],
+        name=args.get("name"),
+        brand=args.get("brand"),
+        model=args.get("model"),
+        notes=args.get("notes"),
+        retired=args.get("retired"),
+        is_default=args.get("is_default"),
         max_distance_km=args.get("max_distance_km"),
-        wheels=args.get("wheels"), crank_length_mm=args.get("crank_length_mm"),
+        wheels=args.get("wheels"),
+        crank_length_mm=args.get("crank_length_mm"),
     )
 
+
 @_handler("tp_delete_equipment")
-async def _h_delete_equipment(args): return await tp_delete_equipment(equipment_id=args["equipment_id"])
+async def _h_delete_equipment(args):
+    return await tp_delete_equipment(equipment_id=args["equipment_id"])
+
 
 # --- Events & Calendar ---
 @_handler("tp_get_focus_event")
-async def _h_focus_event(args): return await tp_get_focus_event()
+async def _h_focus_event(args):
+    return await tp_get_focus_event()
+
 
 @_handler("tp_get_next_event")
-async def _h_next_event(args): return await tp_get_next_event()
+async def _h_next_event(args):
+    return await tp_get_next_event()
+
 
 @_handler("tp_get_events")
 async def _h_get_events(args):
     return await tp_get_events(start_date=args["start_date"], end_date=args["end_date"])
 
+
 @_handler("tp_create_event")
 async def _h_create_event(args):
     return await tp_create_event(
-        name=args["name"], date=args["date"], event_type=args.get("event_type"),
-        priority=args.get("priority"), distance_km=args.get("distance_km"),
-        ctl_target=args.get("ctl_target"), description=args.get("description"),
+        name=args["name"],
+        date=args["date"],
+        event_type=args.get("event_type"),
+        priority=args.get("priority"),
+        distance_km=args.get("distance_km"),
+        ctl_target=args.get("ctl_target"),
+        description=args.get("description"),
     )
+
 
 @_handler("tp_update_event")
 async def _h_update_event(args):
     return await tp_update_event(
-        event_id=args["event_id"], name=args.get("name"), date=args.get("date"),
-        event_type=args.get("event_type"), priority=args.get("priority"),
-        distance_km=args.get("distance_km"), ctl_target=args.get("ctl_target"),
+        event_id=args["event_id"],
+        name=args.get("name"),
+        date=args.get("date"),
+        event_type=args.get("event_type"),
+        priority=args.get("priority"),
+        distance_km=args.get("distance_km"),
+        ctl_target=args.get("ctl_target"),
         description=args.get("description"),
     )
 
+
 @_handler("tp_delete_event")
-async def _h_delete_event(args): return await tp_delete_event(event_id=args["event_id"])
+async def _h_delete_event(args):
+    return await tp_delete_event(event_id=args["event_id"])
+
 
 @_handler("tp_create_note")
 async def _h_create_note(args):
     return await tp_create_note(
-        date=args["date"], title=args["title"], description=args.get("description"),
+        date=args["date"],
+        title=args["title"],
+        description=args.get("description"),
     )
 
+
 @_handler("tp_delete_note")
-async def _h_delete_note(args): return await tp_delete_note(note_id=args["note_id"])
+async def _h_delete_note(args):
+    return await tp_delete_note(note_id=args["note_id"])
+
 
 @_handler("tp_get_note")
-async def _h_get_note(args): return await tp_get_note(note_id=args["note_id"])
+async def _h_get_note(args):
+    return await tp_get_note(note_id=args["note_id"])
+
+
+@_handler("tp_get_notes")
+async def _h_get_notes(args):
+    return await tp_get_notes(start_date=args["start_date"], end_date=args["end_date"])
+
 
 @_handler("tp_update_note")
 async def _h_update_note(args):
@@ -1247,70 +1444,106 @@ async def _h_update_note(args):
         is_hidden=args.get("is_hidden"),
     )
 
+
 @_handler("tp_get_note_comments")
-async def _h_get_note_comments(args): return await tp_get_note_comments(note_id=args["note_id"])
+async def _h_get_note_comments(args):
+    return await tp_get_note_comments(note_id=args["note_id"])
+
 
 @_handler("tp_add_note_comment")
 async def _h_add_note_comment(args):
     return await tp_add_note_comment(note_id=args["note_id"], comment=args["comment"])
 
+
 @_handler("tp_get_availability")
 async def _h_get_avail(args):
-    return await tp_get_availability(start_date=args["start_date"], end_date=args["end_date"])
+    return await tp_get_availability(
+        start_date=args["start_date"], end_date=args["end_date"]
+    )
+
 
 @_handler("tp_create_availability")
 async def _h_create_avail(args):
     return await tp_create_availability(
-        start_date=args["start_date"], end_date=args["end_date"],
-        limited=args.get("limited", False), sport_types=args.get("sport_types"),
+        start_date=args["start_date"],
+        end_date=args["end_date"],
+        limited=args.get("limited", False),
+        sport_types=args.get("sport_types"),
     )
 
+
 @_handler("tp_delete_availability")
-async def _h_delete_avail(args): return await tp_delete_availability(availability_id=args["availability_id"])
+async def _h_delete_avail(args):
+    return await tp_delete_availability(availability_id=args["availability_id"])
+
 
 # --- Workout Types ---
 @_handler("tp_get_workout_types")
-async def _h_workout_types(args): return await tp_get_workout_types()
+async def _h_workout_types(args):
+    return await tp_get_workout_types()
+
 
 # --- Workout Library ---
 @_handler("tp_get_libraries")
-async def _h_get_libs(args): return await tp_get_libraries()
+async def _h_get_libs(args):
+    return await tp_get_libraries()
+
 
 @_handler("tp_get_library_items")
-async def _h_get_lib_items(args): return await tp_get_library_items(library_id=args["library_id"])
+async def _h_get_lib_items(args):
+    return await tp_get_library_items(library_id=args["library_id"])
+
 
 @_handler("tp_get_library_item")
 async def _h_get_lib_item(args):
-    return await tp_get_library_item(library_id=args["library_id"], item_id=args["item_id"])
+    return await tp_get_library_item(
+        library_id=args["library_id"], item_id=args["item_id"]
+    )
+
 
 @_handler("tp_create_library")
-async def _h_create_lib(args): return await tp_create_library(name=args["name"])
+async def _h_create_lib(args):
+    return await tp_create_library(name=args["name"])
+
 
 @_handler("tp_delete_library")
-async def _h_delete_lib(args): return await tp_delete_library(library_id=args["library_id"])
+async def _h_delete_lib(args):
+    return await tp_delete_library(library_id=args["library_id"])
+
 
 @_handler("tp_create_library_item")
 async def _h_create_lib_item(args):
     return await tp_create_library_item(
-        library_id=args["library_id"], name=args["name"],
-        sport_family_id=args["sport_family_id"], sport_type_id=args["sport_type_id"],
-        duration_hours=args.get("duration_hours"), tss=args.get("tss"),
-        description=args.get("description"), structure=args.get("structure"),
+        library_id=args["library_id"],
+        name=args["name"],
+        sport_family_id=args["sport_family_id"],
+        sport_type_id=args["sport_type_id"],
+        duration_hours=args.get("duration_hours"),
+        tss=args.get("tss"),
+        description=args.get("description"),
+        structure=args.get("structure"),
     )
+
 
 @_handler("tp_update_library_item")
 async def _h_update_lib_item(args):
     return await tp_update_library_item(
-        library_id=args["library_id"], item_id=args["item_id"],
-        name=args.get("name"), duration_hours=args.get("duration_hours"),
-        tss=args.get("tss"), description=args.get("description"),
+        library_id=args["library_id"],
+        item_id=args["item_id"],
+        name=args.get("name"),
+        duration_hours=args.get("duration_hours"),
+        tss=args.get("tss"),
+        description=args.get("description"),
         structure=args.get("structure"),
     )
+
 
 @_handler("tp_schedule_library_workout")
 async def _h_schedule_lib(args):
     return await tp_schedule_library_workout(
-        library_id=args["library_id"], item_id=args["item_id"], date=args["date"],
+        library_id=args["library_id"],
+        item_id=args["item_id"],
+        date=args["date"],
     )
 
 

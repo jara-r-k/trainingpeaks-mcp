@@ -80,6 +80,7 @@ class TestListTools:
             "tp_create_note",
             "tp_delete_note",
             "tp_get_note",
+            "tp_get_notes",
             "tp_update_note",
             "tp_get_note_comments",
             "tp_add_note_comment",
@@ -132,8 +133,14 @@ class TestListTools:
         create_tool = next(t for t in tools if t.name == "tp_create_workout")
         update_tool = next(t for t in tools if t.name == "tp_update_workout")
 
-        assert "YYYY-MM-DDTHH:MM:SS" in create_tool.inputSchema["properties"]["date"]["description"]
-        assert "YYYY-MM-DDTHH:MM:SS" in update_tool.inputSchema["properties"]["date"]["description"]
+        assert (
+            "YYYY-MM-DDTHH:MM:SS"
+            in create_tool.inputSchema["properties"]["date"]["description"]
+        )
+        assert (
+            "YYYY-MM-DDTHH:MM:SS"
+            in update_tool.inputSchema["properties"]["date"]["description"]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -159,14 +166,21 @@ class TestGetWorkoutsDispatch:
 
     @pytest.mark.asyncio
     async def test_invalid_date_format(self):
-        result = _parse_result(await call_tool("tp_get_workouts", {"start_date": "nope", "end_date": "2025-01-01"}))
+        result = _parse_result(
+            await call_tool(
+                "tp_get_workouts", {"start_date": "nope", "end_date": "2025-01-01"}
+            )
+        )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
 
     @pytest.mark.asyncio
     async def test_date_range_too_large(self):
         result = _parse_result(
-            await call_tool("tp_get_workouts", {"start_date": "2025-01-01", "end_date": "2025-12-01"})
+            await call_tool(
+                "tp_get_workouts",
+                {"start_date": "2025-01-01", "end_date": "2025-12-01"},
+            )
         )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
@@ -175,7 +189,10 @@ class TestGetWorkoutsDispatch:
     @pytest.mark.asyncio
     async def test_inverted_dates(self):
         result = _parse_result(
-            await call_tool("tp_get_workouts", {"start_date": "2025-02-01", "end_date": "2025-01-01"})
+            await call_tool(
+                "tp_get_workouts",
+                {"start_date": "2025-02-01", "end_date": "2025-01-01"},
+            )
         )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
@@ -183,7 +200,9 @@ class TestGetWorkoutsDispatch:
     @pytest.mark.asyncio
     async def test_success_via_server(self, mock_api_responses):
         """Valid dates + mocked API should return workouts through the server layer."""
-        workouts_response = APIResponse(success=True, data=mock_api_responses["workouts"])
+        workouts_response = APIResponse(
+            success=True, data=mock_api_responses["workouts"]
+        )
 
         with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
             mock_instance = AsyncMock()
@@ -192,7 +211,10 @@ class TestGetWorkoutsDispatch:
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = _parse_result(
-                await call_tool("tp_get_workouts", {"start_date": "2025-01-08", "end_date": "2025-01-09"})
+                await call_tool(
+                    "tp_get_workouts",
+                    {"start_date": "2025-01-08", "end_date": "2025-01-09"},
+                )
             )
 
         assert result["count"] == 2
@@ -210,7 +232,9 @@ class TestGetWorkoutDispatch:
     @pytest.mark.asyncio
     async def test_path_traversal_blocked(self):
         """workout_id like '../foo' must be rejected."""
-        result = _parse_result(await call_tool("tp_get_workout", {"workout_id": "../etc/passwd"}))
+        result = _parse_result(
+            await call_tool("tp_get_workout", {"workout_id": "../etc/passwd"})
+        )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
 
@@ -222,7 +246,9 @@ class TestGetWorkoutDispatch:
 
     @pytest.mark.asyncio
     async def test_valid_id_reaches_api(self, mock_api_responses):
-        workout_response = APIResponse(success=True, data=mock_api_responses["workout_detail"])
+        workout_response = APIResponse(
+            success=True, data=mock_api_responses["workout_detail"]
+        )
 
         with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
             mock_instance = AsyncMock()
@@ -230,7 +256,9 @@ class TestGetWorkoutDispatch:
             mock_instance.get = AsyncMock(return_value=workout_response)
             mock_client.return_value.__aenter__.return_value = mock_instance
 
-            result = _parse_result(await call_tool("tp_get_workout", {"workout_id": "1001"}))
+            result = _parse_result(
+                await call_tool("tp_get_workout", {"workout_id": "1001"})
+            )
 
         assert result["id"] == "1001"
         # Verify the URL used the validated integer, not the raw string
@@ -246,7 +274,9 @@ class TestGetWorkoutDispatch:
 class TestGetPeaksDispatch:
     @pytest.mark.asyncio
     async def test_invalid_pr_type(self):
-        result = _parse_result(await call_tool("tp_get_peaks", {"sport": "Bike", "pr_type": "bogus"}))
+        result = _parse_result(
+            await call_tool("tp_get_peaks", {"sport": "Bike", "pr_type": "bogus"})
+        )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
         assert "bogus" in result["message"]
@@ -261,7 +291,11 @@ class TestGetPeaksDispatch:
             mock_instance.get = AsyncMock(return_value=peaks_response)
             mock_client.return_value.__aenter__.return_value = mock_instance
 
-            result = _parse_result(await call_tool("tp_get_peaks", {"sport": "Bike", "pr_type": "power20min"}))
+            result = _parse_result(
+                await call_tool(
+                    "tp_get_peaks", {"sport": "Bike", "pr_type": "power20min"}
+                )
+            )
 
         assert result["records"] == []
         assert result["sport"] == "Bike"
@@ -287,7 +321,9 @@ class TestGetFitnessDispatch:
 
     @pytest.mark.asyncio
     async def test_start_without_end_rejected(self):
-        result = _parse_result(await call_tool("tp_get_fitness", {"start_date": "2025-01-01"}))
+        result = _parse_result(
+            await call_tool("tp_get_fitness", {"start_date": "2025-01-01"})
+        )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
 
@@ -300,7 +336,9 @@ class TestGetFitnessDispatch:
 class TestAnalyzeWorkoutDispatch:
     @pytest.mark.asyncio
     async def test_non_numeric_id_rejected(self):
-        result = _parse_result(await call_tool("tp_analyze_workout", {"workout_id": "abc"}))
+        result = _parse_result(
+            await call_tool("tp_analyze_workout", {"workout_id": "abc"})
+        )
         assert result["isError"] is True
         assert result["error_code"] == "VALIDATION_ERROR"
 
@@ -318,7 +356,12 @@ class TestCreateWorkoutDispatch:
         result = _parse_result(
             await call_tool(
                 "tp_create_workout",
-                {"date": "2026-01-10", "sport": "Hockey", "title": "Game", "duration_minutes": 60},
+                {
+                    "date": "2026-01-10",
+                    "sport": "Hockey",
+                    "title": "Game",
+                    "duration_minutes": 60,
+                },
             )
         )
         assert result["isError"] is True
@@ -329,7 +372,12 @@ class TestCreateWorkoutDispatch:
         result = _parse_result(
             await call_tool(
                 "tp_create_workout",
-                {"date": "2026-01-10", "sport": "Run", "title": "", "duration_minutes": 60},
+                {
+                    "date": "2026-01-10",
+                    "sport": "Run",
+                    "title": "",
+                    "duration_minutes": 60,
+                },
             )
         )
         assert result["isError"] is True
@@ -340,7 +388,12 @@ class TestCreateWorkoutDispatch:
         result = _parse_result(
             await call_tool(
                 "tp_create_workout",
-                {"date": "2026-01-10", "sport": "Run", "title": "Test", "duration_minutes": 0},
+                {
+                    "date": "2026-01-10",
+                    "sport": "Run",
+                    "title": "Test",
+                    "duration_minutes": 0,
+                },
             )
         )
         assert result["isError"] is True
@@ -351,7 +404,12 @@ class TestCreateWorkoutDispatch:
         result = _parse_result(
             await call_tool(
                 "tp_create_workout",
-                {"date": "2026-01-10", "sport": "Run", "title": "x" * 201, "duration_minutes": 60},
+                {
+                    "date": "2026-01-10",
+                    "sport": "Run",
+                    "title": "x" * 201,
+                    "duration_minutes": 60,
+                },
             )
         )
         assert result["isError"] is True
@@ -362,7 +420,11 @@ class TestCreateWorkoutDispatch:
         """Basic create without distance_km / tss_planned."""
         create_response = APIResponse(
             success=True,
-            data={"workoutId": 9001, "title": "Easy Run", "workoutDay": "2026-01-10T00:00:00"},
+            data={
+                "workoutId": 9001,
+                "title": "Easy Run",
+                "workoutDay": "2026-01-10T00:00:00",
+            },
         )
 
         with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
@@ -374,7 +436,12 @@ class TestCreateWorkoutDispatch:
             result = _parse_result(
                 await call_tool(
                     "tp_create_workout",
-                    {"date": "2026-01-10", "sport": "Run", "title": "Easy Run", "duration_minutes": 45},
+                    {
+                        "date": "2026-01-10",
+                        "sport": "Run",
+                        "title": "Easy Run",
+                        "duration_minutes": 45,
+                    },
                 )
             )
 
@@ -406,7 +473,12 @@ class TestCreateWorkoutDispatch:
             result = _parse_result(
                 await call_tool(
                     "tp_create_workout",
-                    {"date": "2026-01-10T18:15:00", "sport": "Run", "title": "Evening Run", "duration_minutes": 45},
+                    {
+                        "date": "2026-01-10T18:15:00",
+                        "sport": "Run",
+                        "title": "Evening Run",
+                        "duration_minutes": 45,
+                    },
                 )
             )
 
@@ -421,7 +493,11 @@ class TestCreateWorkoutDispatch:
         """Create with distance_km and tss_planned - verify they reach the API payload."""
         create_response = APIResponse(
             success=True,
-            data={"workoutId": 9002, "title": "Long Ride", "workoutDay": "2026-02-01T00:00:00"},
+            data={
+                "workoutId": 9002,
+                "title": "Long Ride",
+                "workoutDay": "2026-02-01T00:00:00",
+            },
         )
 
         with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
@@ -508,7 +584,11 @@ class TestUpdateWorkoutDispatch:
             result = _parse_result(
                 await call_tool(
                     "tp_update_workout",
-                    {"workout_id": "1001", "date": "2026-04-14T16:45:00", "description": "Kräftigung"},
+                    {
+                        "workout_id": "1001",
+                        "date": "2026-04-14T16:45:00",
+                        "description": "Kräftigung",
+                    },
                 )
             )
 
@@ -547,7 +627,10 @@ class TestCatchAllErrorHandler:
     @pytest.mark.asyncio
     async def test_internal_error_generic_message(self):
         """An unexpected exception should return generic message, not str(e)."""
-        with patch("tp_mcp.server.tp_get_profile", side_effect=RuntimeError("secret db password")):
+        with patch(
+            "tp_mcp.server.tp_get_profile",
+            side_effect=RuntimeError("secret db password"),
+        ):
             result = _parse_result(await call_tool("tp_get_profile", {}))
 
         assert result["isError"] is True

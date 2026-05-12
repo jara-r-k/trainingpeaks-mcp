@@ -8,7 +8,11 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from tp_mcp.client import TPClient
-from tp_mcp.tools._validation import DateRangeInput, WorkoutIdInput, format_validation_error
+from tp_mcp.tools._validation import (
+    DateRangeInput,
+    WorkoutIdInput,
+    format_validation_error,
+)
 
 logger = logging.getLogger("tp-mcp")
 
@@ -58,13 +62,37 @@ def _default_create_event_payload(
 
 # Non-exhaustive list of known event types (TP API may accept others)
 EVENT_TYPES = [
-    "RoadRunning", "RunningTrack", "TrailRunning", "TrackRunning", "CrossCountry", "Running",
-    "RoadCycling", "MountainBiking", "Cyclocross", "TrackCycling", "Cycling",
-    "OpenWaterSwimming", "PoolSwimming", "Triathlon", "MultisportTriathlon",
-    "Xterra", "Duathlon", "Aquabike", "Aquathon", "Multisport",
-    "Regatta", "Rowing",
-    "AlpineSkiing", "NordicSkiing", "SkiMountaineering", "Snowshoe", "Snow",
-    "Adventure", "Obstacle", "SpeedSkate", "Other",
+    "RoadRunning",
+    "RunningTrack",
+    "TrailRunning",
+    "TrackRunning",
+    "CrossCountry",
+    "Running",
+    "RoadCycling",
+    "MountainBiking",
+    "Cyclocross",
+    "TrackCycling",
+    "Cycling",
+    "OpenWaterSwimming",
+    "PoolSwimming",
+    "Triathlon",
+    "MultisportTriathlon",
+    "Xterra",
+    "Duathlon",
+    "Aquabike",
+    "Aquathon",
+    "Multisport",
+    "Regatta",
+    "Rowing",
+    "AlpineSkiing",
+    "NordicSkiing",
+    "SkiMountaineering",
+    "Snowshoe",
+    "Snow",
+    "Adventure",
+    "Obstacle",
+    "SpeedSkate",
+    "Other",
 ]
 
 
@@ -118,7 +146,9 @@ async def tp_get_focus_event() -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -145,7 +175,9 @@ async def tp_get_next_event() -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -192,7 +224,9 @@ async def tp_get_events(start_date: str, end_date: str) -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -274,7 +308,9 @@ async def tp_create_event(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -346,7 +382,9 @@ async def tp_update_event(
         today = dt_date.today()
         search_start = (today - timedelta(days=730)).isoformat()
         search_end = (today + timedelta(days=730)).isoformat()
-        search_endpoint = f"/fitness/v6/athletes/{athlete_id}/events/{search_start}/{search_end}"
+        search_endpoint = (
+            f"/fitness/v6/athletes/{athlete_id}/events/{search_start}/{search_end}"
+        )
         search_response = await client.get(search_endpoint)
 
         existing = None
@@ -389,7 +427,9 @@ async def tp_update_event(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -433,7 +473,9 @@ async def tp_delete_event(event_id: str) -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -499,7 +541,9 @@ async def tp_create_note(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -543,13 +587,17 @@ async def tp_delete_note(note_id: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        )
         response = await client.delete(endpoint)
 
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -577,16 +625,23 @@ async def tp_get_note(note_id: str) -> dict[str, Any]:
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
-            return {"isError": True, "error_code": "AUTH_INVALID",
-                    "message": "Could not get athlete ID. Re-authenticate."}
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get athlete ID. Re-authenticate.",
+            }
 
-        endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        )
         response = await client.get(endpoint)
 
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -650,23 +705,36 @@ async def tp_update_note(
     if date is not None:
         try:
             from datetime import date as date_type
+
             date_type.fromisoformat(date)
         except ValueError:
-            return {"isError": True, "error_code": "VALIDATION_ERROR",
-                    "message": f"Invalid date: {date}"}
+            return {
+                "isError": True,
+                "error_code": "VALIDATION_ERROR",
+                "message": f"Invalid date: {date}",
+            }
 
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
-            return {"isError": True, "error_code": "AUTH_INVALID",
-                    "message": "Could not get athlete ID. Re-authenticate."}
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get athlete ID. Re-authenticate.",
+            }
 
-        get_endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        get_endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}"
+        )
         get_response = await client.get(get_endpoint)
         if get_response.is_error:
             return {
                 "isError": True,
-                "error_code": get_response.error_code.value if get_response.error_code else "API_ERROR",
+                "error_code": (
+                    get_response.error_code.value
+                    if get_response.error_code
+                    else "API_ERROR"
+                ),
                 "message": get_response.message,
             }
 
@@ -684,7 +752,11 @@ async def tp_update_note(
         if put_response.is_error:
             return {
                 "isError": True,
-                "error_code": put_response.error_code.value if put_response.error_code else "API_ERROR",
+                "error_code": (
+                    put_response.error_code.value
+                    if put_response.error_code
+                    else "API_ERROR"
+                ),
                 "message": put_response.message,
             }
 
@@ -706,6 +778,91 @@ async def tp_update_note(
         }
 
 
+async def tp_get_notes(start_date: str, end_date: str) -> dict[str, Any]:
+    """List calendar notes in a date range.
+
+    Args:
+        start_date: Start date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD). Max 730 days span (±1 year typical).
+
+    Returns:
+        Dict with notes list (hidden notes filtered out), count, and date range.
+    """
+    try:
+        start = dt_date.fromisoformat(start_date)
+        end = dt_date.fromisoformat(end_date)
+    except ValueError as e:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": f"Invalid date: {e}",
+        }
+    if start > end:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "start_date must be before or equal to end_date",
+        }
+    if (end - start).days > 730:
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Date range too large. Maximum 730 days.",
+        }
+
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get athlete ID. Re-authenticate.",
+            }
+
+        start_str = start.isoformat()
+        end_str = end.isoformat()
+        endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/calendarNotes/{start_str}/{end_str}"
+        )
+        response = await client.get(endpoint)
+
+        if response.is_error:
+            return {
+                "isError": True,
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
+                "message": response.message,
+            }
+
+        raw_notes: list[dict[str, Any]] = (
+            response.data if isinstance(response.data, list) else []
+        )
+        notes: list[dict[str, Any]] = []
+        for n in raw_notes:
+            if n.get("isHidden"):
+                continue
+            note_date_str = n.get("noteDate", "")
+            if note_date_str and "T" in note_date_str:
+                note_date_str = note_date_str.split("T")[0]
+            notes.append(
+                {
+                    "id": n.get("id"),
+                    "title": n.get("title"),
+                    "description": n.get("description"),
+                    "date": note_date_str,
+                    "is_hidden": n.get("isHidden", False),
+                    "created_date": n.get("createdDate"),
+                    "modified_date": n.get("modifiedDate"),
+                }
+            )
+        return {
+            "notes": notes,
+            "count": len(notes),
+            "date_range": {"start": start_date, "end": end_date},
+        }
+
+
 async def tp_get_note_comments(note_id: str) -> dict[str, Any]:
     """Get comments for a calendar note.
 
@@ -724,8 +881,11 @@ async def tp_get_note_comments(note_id: str) -> dict[str, Any]:
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
-            return {"isError": True, "error_code": "AUTH_INVALID",
-                    "message": "Could not get athlete ID. Re-authenticate."}
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get athlete ID. Re-authenticate.",
+            }
 
         endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}/comments"
         response = await client.get(endpoint)
@@ -733,11 +893,15 @@ async def tp_get_note_comments(note_id: str) -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
-        raw_comments: list[dict[str, Any]] = response.data if isinstance(response.data, list) else []
+        raw_comments: list[dict[str, Any]] = (
+            response.data if isinstance(response.data, list) else []
+        )
         comments = [
             {
                 "id": c.get("calendarNoteCommentStreamId"),
@@ -767,14 +931,20 @@ async def tp_add_note_comment(note_id: str, comment: str) -> dict[str, Any]:
         return {"isError": True, "error_code": "VALIDATION_ERROR", "message": msg}
 
     if not comment or not comment.strip():
-        return {"isError": True, "error_code": "VALIDATION_ERROR",
-                "message": "Comment must not be empty."}
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Comment must not be empty.",
+        }
 
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
-            return {"isError": True, "error_code": "AUTH_INVALID",
-                    "message": "Could not get athlete ID. Re-authenticate."}
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get athlete ID. Re-authenticate.",
+            }
 
         endpoint = f"/fitness/v1/athletes/{athlete_id}/calendarNote/{validated.workout_id}/comment"
         response = await client.put(endpoint, json={"Comment": comment.strip()})
@@ -782,7 +952,9 @@ async def tp_add_note_comment(note_id: str, comment: str) -> dict[str, Any]:
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -820,13 +992,17 @@ async def tp_get_availability(start_date: str, end_date: str) -> dict[str, Any]:
 
         start_str = params.start_date.isoformat()
         end_str = params.end_date.isoformat()
-        endpoint = f"/fitness/v1/athletes/{athlete_id}/availability/{start_str}/{end_str}"
+        endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/availability/{start_str}/{end_str}"
+        )
         response = await client.get(endpoint)
 
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -888,7 +1064,9 @@ async def tp_create_availability(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -933,13 +1111,17 @@ async def tp_delete_availability(availability_id: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        endpoint = f"/fitness/v1/athletes/{athlete_id}/availability/{validated.workout_id}"
+        endpoint = (
+            f"/fitness/v1/athletes/{athlete_id}/availability/{validated.workout_id}"
+        )
         response = await client.delete(endpoint)
 
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
