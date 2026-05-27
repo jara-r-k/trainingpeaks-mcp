@@ -10,6 +10,81 @@ from tp_mcp.client import TPClient
 
 FILE_DATA_DIR = Path(tempfile.gettempdir()) / "tp-mcp" / "files"
 
+# Workout file extensions accepted for upload (case-insensitive).
+_ALLOWED_UPLOAD_EXTENSIONS = {".fit", ".tcx", ".gpx", ".csv"}
+
+# Sensitive path prefixes — reading or writing these is never legitimate for workout files.
+_SENSITIVE_PREFIXES = (
+    "/etc/",
+    "/var/",
+    "/root/",
+    "/sys/",
+    "/proc/",
+    "/private/etc/",
+    "/private/var/",
+)
+
+# Dotfile directory names whose presence anywhere in a resolved path is grounds for rejection.
+_SENSITIVE_DIR_NAMES = {".ssh", ".aws", ".config", ".gnupg", ".kube", ".docker"}
+
+
+def _validate_path(
+    raw: str,
+    *,
+    mode: str,  # "upload" | "download"
+) -> tuple[Path, str] | tuple[None, str]:
+    """Resolve *raw* to a safe absolute path; return (Path, "") on success or (None, reason) on failure.
+
+    Security contract:
+    - Symlinks and ``..`` components are eliminated by ``Path.resolve()``.
+    - Paths in sensitive OS prefixes (/etc, /var, /sys, /proc, /root, /private/etc) are rejected.
+    - Paths containing dotfile credential directories (.ssh, .aws, .gnupg, etc.) are rejected.
+    - Upload paths must have an allowed workout extension (.fit, .tcx, .gpx, .csv).
+    - Download output paths must be under $HOME. Unrestricted writes are not supported
+      (no TP_ALLOW_UNRESTRICTED_PATHS override is currently implemented).
+    """
+    try:
+        resolved = Path(raw).expanduser().resolve()
+    except (OSError, ValueError) as exc:
+        return None, f"Invalid path: {exc}"
+
+    resolved_str = str(resolved)
+
+    # Reject sensitive OS prefixes (prevents reading host keys, /proc/mem, etc.)
+    for prefix in _SENSITIVE_PREFIXES:
+        if resolved_str.startswith(prefix):
+            return (
+                None,
+                f"Path is in a restricted system location ({prefix.rstrip('/')}).",
+            )
+
+    # Reject paths that pass through a dotfile credential directory.
+    for part in resolved.parts:
+        if part in _SENSITIVE_DIR_NAMES:
+            return (
+                None,
+                f"Path passes through a restricted credential directory ({part}).",
+            )
+
+    if mode == "upload":
+        suffix = resolved.suffix.lower()
+        if suffix not in _ALLOWED_UPLOAD_EXTENSIONS:
+            exts = ", ".join(sorted(_ALLOWED_UPLOAD_EXTENSIONS))
+            return None, f"Unsupported file extension '{suffix}'. Allowed: {exts}."
+
+    if mode == "download":
+        home = Path.home().resolve()
+        # Reject paths outside $HOME — unrestricted writes are not supported.
+        try:
+            resolved.relative_to(home)
+        except ValueError:
+            return None, (
+                f"Download output path must be under {home}. "
+                "Writing outside $HOME is not supported."
+            )
+
+    return resolved, ""
+
 
 def _is_numeric_id(value: str, *, allow_negative: bool = False) -> bool:
     """Return True when value is a numeric ID string."""
@@ -47,11 +122,13 @@ def _parse_content_disposition_filename(value: str | None) -> str | None:
     idx = lower.find(token)
     if idx == -1:
         return None
-    filename = value[idx + len(token):].strip().strip('"').strip("'")
+    filename = value[idx + len(token) :].strip().strip('"').strip("'")
     return Path(filename).name if filename else None
 
 
-def _save_workout_file(workout_id: str, file_id: str, filename: str, data: bytes) -> str:
+def _save_workout_file(
+    workout_id: str, file_id: str, filename: str, data: bytes
+) -> str:
     """Persist downloaded workout file and return absolute path."""
     FILE_DATA_DIR.mkdir(parents=True, exist_ok=True)
     fallback_name = f"workout_{workout_id}_file_{file_id}.fit.gz"
@@ -79,7 +156,11 @@ async def tp_upload_workout_file(
         Dict with upload confirmation or error.
     """
     if not _is_numeric_id(workout_id):
-        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": "workout_id must be a numeric ID."}
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "workout_id must be a numeric ID.",
+        }
     if not file_path and not file_data_base64:
         return {
             "isError": True,
@@ -96,15 +177,22 @@ async def tp_upload_workout_file(
     raw_bytes: bytes
     file_name: str
     if file_path:
+        safe_path, reason = _validate_path(file_path, mode="upload")
+        if safe_path is None:
+            return {
+                "isError": True,
+                "error_code": "VALIDATION_ERROR",
+                "message": reason,
+            }
         try:
-            raw_bytes = Path(file_path).read_bytes()
+            raw_bytes = safe_path.read_bytes()
         except OSError as e:
             return {
                 "isError": True,
                 "error_code": "VALIDATION_ERROR",
                 "message": f"Could not read file_path: {e}",
             }
-        file_name = Path(file_path).name
+        file_name = safe_path.name
     else:
         try:
             raw_bytes = base64.b64decode(file_data_base64 or "", validate=True)
@@ -144,10 +232,16 @@ async def tp_upload_workout_file(
             if get_response.is_error:
                 return {
                     "isError": True,
-                    "error_code": get_response.error_code.value if get_response.error_code else "API_ERROR",
+                    "error_code": (
+                        get_response.error_code.value
+                        if get_response.error_code
+                        else "API_ERROR"
+                    ),
                     "message": f"Failed to fetch workout for upload: {get_response.message}",
                 }
-            workout_payload = get_response.data if isinstance(get_response.data, dict) else {}
+            workout_payload = (
+                get_response.data if isinstance(get_response.data, dict) else {}
+            )
             existing_day = workout_payload.get("workoutDay")
             if not existing_day:
                 return {
@@ -171,7 +265,9 @@ async def tp_upload_workout_file(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -201,13 +297,28 @@ async def tp_download_workout_file(
         Dict with file info and saved path, or error.
     """
     if not _is_numeric_id(workout_id):
-        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": "workout_id must be a numeric ID."}
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "workout_id must be a numeric ID.",
+        }
     if not _is_numeric_id(file_id, allow_negative=True):
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
             "message": "file_id must be a numeric ID (can be negative).",
         }
+
+    # Validate output_path before making any API call — rejects malicious paths early.
+    safe_output: Path | None = None
+    if output_path:
+        safe_output, reason = _validate_path(output_path, mode="download")
+        if safe_output is None:
+            return {
+                "isError": True,
+                "error_code": "VALIDATION_ERROR",
+                "message": reason,
+            }
 
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
@@ -222,23 +333,31 @@ async def tp_download_workout_file(
         response = await client.get_raw(endpoint)
 
         if response.is_error:
-            if response.error_code is not None and response.error_code.value == "NOT_FOUND":
-                return {"isError": True, "error_code": "NOT_FOUND", "message": f"Workout file {file_id} not found."}
+            if (
+                response.error_code is not None
+                and response.error_code.value == "NOT_FOUND"
+            ):
+                return {
+                    "isError": True,
+                    "error_code": "NOT_FOUND",
+                    "message": f"Workout file {file_id} not found.",
+                }
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
         filename = _parse_content_disposition_filename(response.content_disposition)
         content = response.content
-        if output_path:
-            target = Path(output_path)
-            if target.exists() and target.is_dir():
+        if safe_output is not None:
+            if safe_output.is_dir():
                 save_name = filename or f"workout_{workout_id}_file_{file_id}.fit.gz"
-                file_out = (target / Path(save_name).name).resolve()
+                file_out = safe_output / Path(save_name).name
             else:
-                file_out = target.resolve()
+                file_out = safe_output
             file_out.parent.mkdir(parents=True, exist_ok=True)
             file_out.write_bytes(content)
             saved_to = str(file_out)
@@ -272,7 +391,11 @@ async def tp_delete_workout_file(workout_id: str, file_id: str) -> dict[str, Any
         Dict with confirmation or error.
     """
     if not _is_numeric_id(workout_id):
-        return {"isError": True, "error_code": "VALIDATION_ERROR", "message": "workout_id must be a numeric ID."}
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "workout_id must be a numeric ID.",
+        }
     if not _is_numeric_id(file_id, allow_negative=True):
         return {
             "isError": True,
@@ -294,8 +417,14 @@ async def tp_delete_workout_file(workout_id: str, file_id: str) -> dict[str, Any
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
-        return {"workout_id": workout_id, "file_id": file_id, "message": "Workout file deleted successfully."}
+        return {
+            "workout_id": workout_id,
+            "file_id": file_id,
+            "message": "Workout file deleted successfully.",
+        }
