@@ -17,9 +17,27 @@ class TestTpGetFitness:
         fitness_response = APIResponse(
             success=True,
             data=[
-                {"workoutDay": "2025-01-07T00:00:00", "tssActual": 50, "ctl": 45.2, "atl": 55.1, "tsb": -9.9},
-                {"workoutDay": "2025-01-08T00:00:00", "tssActual": 80, "ctl": 46.0, "atl": 60.3, "tsb": -14.3},
-                {"workoutDay": "2025-01-09T00:00:00", "tssActual": 0, "ctl": 45.5, "atl": 52.1, "tsb": -6.6},
+                {
+                    "workoutDay": "2025-01-07T00:00:00",
+                    "tssActual": 50,
+                    "ctl": 45.2,
+                    "atl": 55.1,
+                    "tsb": -9.9,
+                },
+                {
+                    "workoutDay": "2025-01-08T00:00:00",
+                    "tssActual": 80,
+                    "ctl": 46.0,
+                    "atl": 60.3,
+                    "tsb": -14.3,
+                },
+                {
+                    "workoutDay": "2025-01-09T00:00:00",
+                    "tssActual": 0,
+                    "ctl": 45.5,
+                    "atl": 52.1,
+                    "tsb": -6.6,
+                },
             ],
         )
 
@@ -53,7 +71,7 @@ class TestTpGetFitness:
             result = await tp_get_fitness(days=30)
 
         assert "isError" not in result or not result.get("isError")
-        assert result["data"] == []
+        assert result["daily_data"] == []
         assert result["current"] is None
 
     @pytest.mark.asyncio

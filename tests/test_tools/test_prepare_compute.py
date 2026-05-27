@@ -23,13 +23,31 @@ class TestComputeFitnessMetrics:
             query_end=date(2025, 1, 31),
             query_days=30,
         )
-        assert result["data"] == []
+        assert result["daily_data"] == []
         assert result["current"] is None
         assert result["days"] == 30
 
+    def test_empty_data_uses_daily_data_key_not_data(self):
+        # Regression: empty branch must use "daily_data", not "data".
+        # A KeyError here means the wrong key was returned.
+        result = compute_fitness_metrics(
+            raw_data=[],
+            query_start=date(2025, 1, 1),
+            query_end=date(2025, 1, 31),
+            query_days=30,
+        )
+        assert "daily_data" in result
+        assert "data" not in result
+
     def test_single_entry(self):
         raw = [
-            {"workoutDay": "2025-01-08T00:00:00", "tssActual": 80, "ctl": 46.123, "atl": 60.345, "tsb": -14.222}
+            {
+                "workoutDay": "2025-01-08T00:00:00",
+                "tssActual": 80,
+                "ctl": 46.123,
+                "atl": 60.345,
+                "tsb": -14.222,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -46,8 +64,20 @@ class TestComputeFitnessMetrics:
 
     def test_multiple_entries_latest_is_current(self):
         raw = [
-            {"workoutDay": "2025-01-07T00:00:00", "tssActual": 50, "ctl": 45.0, "atl": 55.0, "tsb": -10.0},
-            {"workoutDay": "2025-01-08T00:00:00", "tssActual": 0, "ctl": 44.0, "atl": 48.0, "tsb": 15.0},
+            {
+                "workoutDay": "2025-01-07T00:00:00",
+                "tssActual": 50,
+                "ctl": 45.0,
+                "atl": 55.0,
+                "tsb": -10.0,
+            },
+            {
+                "workoutDay": "2025-01-08T00:00:00",
+                "tssActual": 0,
+                "ctl": 44.0,
+                "atl": 48.0,
+                "tsb": 15.0,
+            },
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -60,7 +90,13 @@ class TestComputeFitnessMetrics:
 
     def test_rounding(self):
         raw = [
-            {"workoutDay": "2025-01-01T00:00:00", "tssActual": 0, "ctl": 45.6789, "atl": 60.1234, "tsb": -14.4456}
+            {
+                "workoutDay": "2025-01-01T00:00:00",
+                "tssActual": 0,
+                "ctl": 45.6789,
+                "atl": 60.1234,
+                "tsb": -14.4456,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -94,7 +130,9 @@ class TestPrepareFitnessData:
         with patch("tp_mcp.tools.fitness.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
-            mock_instance.post = AsyncMock(return_value=APIResponse(success=True, data=raw))
+            mock_instance.post = AsyncMock(
+                return_value=APIResponse(success=True, data=raw)
+            )
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = await prepare_fitness_data(date(2025, 1, 1), date(2025, 1, 31))
@@ -110,7 +148,9 @@ class TestPrepareFitnessData:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.post = AsyncMock(
-                return_value=APIResponse(success=False, error_code=ErrorCode.NETWORK_ERROR, message="Timeout")
+                return_value=APIResponse(
+                    success=False, error_code=ErrorCode.NETWORK_ERROR, message="Timeout"
+                )
             )
             mock_client.return_value.__aenter__.return_value = mock_instance
 
