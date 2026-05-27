@@ -121,6 +121,9 @@ class TPClient:
     _cached_user_data: dict | None = None
     _shared_token_cache: TokenCache | None = None
     _response_cache: ResponseCache | None = None
+    # Serialises concurrent _throttle() callers so the read-sleep-write sequence
+    # is atomic — prevents gather-based fanout from bypassing MIN_REQUEST_INTERVAL.
+    _throttle_lock: asyncio.Lock = asyncio.Lock()
 
     # Endpoint patterns mapped to cache TTL tiers
     _CACHE_TTL_MAP: list[tuple[str, float]] = [
@@ -183,10 +186,11 @@ class TPClient:
 
     async def _throttle(self) -> None:
         """Enforce minimum interval between requests to avoid rate limiting."""
-        elapsed = time.monotonic() - self._last_request_time
-        if elapsed < MIN_REQUEST_INTERVAL:
-            await asyncio.sleep(MIN_REQUEST_INTERVAL - elapsed)
-        self._last_request_time = time.monotonic()
+        async with TPClient._throttle_lock:
+            elapsed = time.monotonic() - self._last_request_time
+            if elapsed < MIN_REQUEST_INTERVAL:
+                await asyncio.sleep(MIN_REQUEST_INTERVAL - elapsed)
+            self._last_request_time = time.monotonic()
 
     async def close(self) -> None:
         """Close the HTTP client."""

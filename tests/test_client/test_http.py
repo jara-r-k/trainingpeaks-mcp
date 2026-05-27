@@ -70,6 +70,28 @@ class TestThrottling:
         client = TPClient()
         assert client._last_request_time == 0.0
 
+    @pytest.mark.asyncio
+    async def test_throttle_concurrent_calls_serialise(self):
+        """Concurrent _throttle() callers must serialise, not bypass the interval.
+
+        Without the lock, all 10 coroutines launched via gather() read the same
+        _last_request_time, none sleep, and total elapsed is near-zero. With the
+        lock the calls queue and total elapsed must be >= 9 * MIN_REQUEST_INTERVAL.
+        """
+        import asyncio
+
+        # Reset instance throttle state so the test is deterministic
+        client = TPClient()
+        client._last_request_time = 0.0
+
+        start = time.monotonic()
+        await asyncio.gather(*[client._throttle() for _ in range(10)])
+        elapsed = time.monotonic() - start
+
+        # First call is instant; the 9 subsequent callers must each wait at least
+        # MIN_REQUEST_INTERVAL, so total >= 9 * MIN_REQUEST_INTERVAL.
+        assert elapsed >= MIN_REQUEST_INTERVAL * 9 * 0.9  # 10% tolerance
+
 
 class TestEnsureAthleteId:
     """Tests for athlete ID caching via ensure_athlete_id."""
@@ -101,7 +123,9 @@ class TestEnsureAthleteId:
     async def test_fetches_from_api_and_caches(self):
         """Should fetch athlete ID from API and cache at class level."""
         client = TPClient()
-        client.get = AsyncMock(return_value=APIResponse(success=True, data={"user": {"personId": 42}}))
+        client.get = AsyncMock(
+            return_value=APIResponse(success=True, data={"user": {"personId": 42}})
+        )
 
         result = await client.ensure_athlete_id()
 
@@ -129,7 +153,9 @@ class TestEnsureAthleteId:
     async def test_returns_none_on_api_failure(self):
         """Should return None when API call fails (no caching)."""
         client = TPClient()
-        client.get = AsyncMock(return_value=APIResponse(success=False, message="Auth failed"))
+        client.get = AsyncMock(
+            return_value=APIResponse(success=False, message="Auth failed")
+        )
 
         result = await client.ensure_athlete_id()
 
@@ -140,7 +166,9 @@ class TestEnsureAthleteId:
     async def test_class_cache_persists_across_instances(self):
         """Class-level cache should persist across TPClient instances."""
         client1 = TPClient()
-        client1.get = AsyncMock(return_value=APIResponse(success=True, data={"user": {"personId": 123}}))
+        client1.get = AsyncMock(
+            return_value=APIResponse(success=True, data={"user": {"personId": 123}})
+        )
         await client1.ensure_athlete_id()
 
         # Second instance should use cached value without API call
