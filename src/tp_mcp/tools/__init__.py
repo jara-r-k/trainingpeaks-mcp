@@ -3,29 +3,24 @@
 from tp_mcp.tools.analyze import tp_analyze_workout
 from tp_mcp.tools.atp import tp_get_atp
 from tp_mcp.tools.auth_status import tp_auth_status
+from tp_mcp.tools.availability import (
+    tp_create_availability,
+    tp_delete_availability,
+    tp_get_availability,
+)
 from tp_mcp.tools.equipment import (
     tp_create_equipment,
     tp_delete_equipment,
     tp_get_equipment,
     tp_update_equipment,
 )
-from tp_mcp.tools.events import (
-    tp_add_note_comment,
-    tp_create_availability,
+from tp_mcp.tools.events_calendar import (
     tp_create_event,
-    tp_create_note,
-    tp_delete_availability,
     tp_delete_event,
-    tp_delete_note,
-    tp_get_availability,
     tp_get_events,
     tp_get_focus_event,
     tp_get_next_event,
-    tp_get_note,
-    tp_get_note_comments,
-    tp_get_notes,
     tp_update_event,
-    tp_update_note,
 )
 from tp_mcp.tools.fitness import tp_get_fitness
 from tp_mcp.tools.library import (
@@ -39,6 +34,15 @@ from tp_mcp.tools.library import (
     tp_update_library_item,
 )
 from tp_mcp.tools.metrics import tp_get_metrics, tp_get_nutrition, tp_log_metrics
+from tp_mcp.tools.notes import (
+    tp_add_note_comment,
+    tp_create_note,
+    tp_delete_note,
+    tp_get_note,
+    tp_get_note_comments,
+    tp_get_notes,
+    tp_update_note,
+)
 from tp_mcp.tools.peaks import tp_get_peaks, tp_get_workout_prs
 from tp_mcp.tools.profile import tp_get_profile, tp_list_athletes
 from tp_mcp.tools.refresh_auth import tp_refresh_auth
