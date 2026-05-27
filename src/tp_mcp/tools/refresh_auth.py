@@ -10,24 +10,16 @@ from typing import Any
 
 from tp_mcp.auth import store_credential, validate_auth
 from tp_mcp.auth.browser import extract_tp_cookie
+from tp_mcp.sanitiser import sanitise_result
 
 
 def _sanitize_result(result: dict[str, Any]) -> dict[str, Any]:
     """SECURITY: Ensure no cookie values in result dict before returning to Claude.
 
-    This is a defense-in-depth measure. Cookie values should never be added
-    to the result dict in the first place, but this ensures they can't leak
-    even if a future code change accidentally adds one.
+    Delegates to the central sanitiser so the coverage is consistent across
+    all tools. Kept as a named function for defence-in-depth and call-site clarity.
     """
-    # List of keys that could contain sensitive data
-    sensitive_keys = ["cookie", "token", "auth", "credential", "password", "secret"]
-    sanitized = {}
-    for key, value in result.items():
-        key_lower = key.lower()
-        if any(sensitive in key_lower for sensitive in sensitive_keys):
-            continue  # Skip sensitive keys entirely
-        sanitized[key] = value
-    return sanitized
+    return sanitise_result(result)
 
 
 async def tp_refresh_auth(browser: str = "auto") -> dict[str, Any]:
@@ -90,10 +82,12 @@ async def tp_refresh_auth(browser: str = "auto") -> dict[str, Any]:
         }
 
     # SECURITY: Sanitize before returning to ensure no cookie leakage
-    return _sanitize_result({
-        "success": True,
-        "message": f"Authentication refreshed from {result.browser}",
-        "athlete_id": validation.athlete_id,
-        "email": validation.email,
-        "action_needed": None,
-    })
+    return _sanitize_result(
+        {
+            "success": True,
+            "message": f"Authentication refreshed from {result.browser}",
+            "athlete_id": validation.athlete_id,
+            "email": validation.email,
+            "action_needed": None,
+        }
+    )

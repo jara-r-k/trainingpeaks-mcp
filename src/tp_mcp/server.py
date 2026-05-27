@@ -15,6 +15,7 @@ from mcp.types import (
 
 from tp_mcp.auth import get_credential, validate_auth
 from tp_mcp.client.context import athlete_override
+from tp_mcp.sanitiser import sanitise_result
 from tp_mcp.tools import (
     tp_add_note_comment,
     tp_add_workout_comment,
@@ -1566,7 +1567,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 "message": f"Unknown tool: {name}",
             }
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [
+            TextContent(type="text", text=json.dumps(sanitise_result(result), indent=2))
+        ]
 
     except Exception:
         logger.exception("Error in tool %s", name)
