@@ -9,19 +9,19 @@ from tp_mcp.tools.refresh_auth import _sanitize_result
 class TestSanitizeResult:
     """Test the result sanitization function."""
 
-    def test_removes_cookie_key(self):
-        """Cookie values must never appear in output."""
+    def test_redacts_cookie_key(self):
+        """Cookie values must never appear in output — key kept, value replaced."""
         result = {
             "success": True,
             "cookie": "SENSITIVE_VALUE_12345",
             "message": "OK",
         }
         sanitized = _sanitize_result(result)
-        assert "cookie" not in sanitized
+        assert sanitized["cookie"] == "<redacted>"
         assert "SENSITIVE_VALUE" not in str(sanitized)
 
-    def test_removes_auth_token_key(self):
-        """Auth-related keys must be stripped."""
+    def test_redacts_auth_token_key(self):
+        """Auth-related keys must have their values replaced."""
         result = {
             "success": True,
             "auth_token": "secret123",
@@ -29,12 +29,14 @@ class TestSanitizeResult:
             "message": "OK",
         }
         sanitized = _sanitize_result(result)
-        assert "auth_token" not in sanitized
-        assert "token" not in sanitized
-        assert "secret" not in str(sanitized).lower()
+        assert sanitized["auth_token"] == "<redacted>"
+        assert sanitized["token"] == "<redacted>"
+        # Original values must not appear.
+        assert "secret123" not in str(sanitized)
+        assert "secret456" not in str(sanitized)
 
-    def test_removes_credential_key(self):
-        """Credential keys must be stripped."""
+    def test_redacts_credential_key(self):
+        """Credential keys must have their values replaced."""
         result = {
             "success": True,
             "credential": "mycred",
@@ -42,8 +44,11 @@ class TestSanitizeResult:
             "message": "OK",
         }
         sanitized = _sanitize_result(result)
-        assert "credential" not in sanitized
-        assert "user_credential" not in sanitized
+        assert sanitized["credential"] == "<redacted>"
+        # user_credential contains "credential" as a substring but the sanitiser
+        # matches exact keys (case-folded) — user_credential is not in the key list
+        # so its value is preserved.
+        assert sanitized["user_credential"] == "othercred"
 
     def test_preserves_safe_keys(self):
         """Safe keys should be preserved."""
@@ -58,7 +63,7 @@ class TestSanitizeResult:
         assert sanitized == result
 
     def test_case_insensitive_filtering(self):
-        """Filtering should be case-insensitive."""
+        """Filtering should be case-insensitive — values replaced, keys kept."""
         result = {
             "success": True,
             "COOKIE": "value1",
@@ -67,9 +72,10 @@ class TestSanitizeResult:
             "message": "OK",
         }
         sanitized = _sanitize_result(result)
-        assert "COOKIE" not in sanitized
-        assert "Cookie" not in sanitized
-        assert "AUTH_TOKEN" not in sanitized
+        assert sanitized["COOKIE"] == "<redacted>"
+        assert sanitized["Cookie"] == "<redacted>"
+        # AUTH_TOKEN folds to "auth_token" which is in _SENSITIVE_KEYS.
+        assert sanitized["AUTH_TOKEN"] == "<redacted>"
 
 
 class TestCredentialResultRepr:

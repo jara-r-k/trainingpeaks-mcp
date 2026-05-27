@@ -11,6 +11,7 @@ import httpx
 
 from tp_mcp.auth import get_credential
 from tp_mcp.client.cache import CacheTier, ResponseCache, build_cache_key
+from tp_mcp.sanitiser import sanitise_result
 
 logger = logging.getLogger("tp-mcp")
 
@@ -634,10 +635,14 @@ class TPClient:
                 message="Resource not found.",
             )
         if response.status_code != 200:
+            # Truncate and sanitise before surfacing — response body may echo back
+            # attacker-controlled header values or contain auth tokens.
+            raw_body = response.text[:200]
+            safe_body = sanitise_result(raw_body)
             return RawResponse(
                 success=False,
                 error_code=ErrorCode.API_ERROR,
-                message=f"API error: {response.status_code} - {response.text}",
+                message=f"API error: {response.status_code} - {safe_body}",
             )
 
         return RawResponse(
