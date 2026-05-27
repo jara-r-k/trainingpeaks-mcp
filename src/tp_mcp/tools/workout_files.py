@@ -13,6 +13,10 @@ FILE_DATA_DIR = Path(tempfile.gettempdir()) / "tp-mcp" / "files"
 # Workout file extensions accepted for upload (case-insensitive).
 _ALLOWED_UPLOAD_EXTENSIONS = {".fit", ".tcx", ".gpx", ".csv"}
 
+# TP only ever returns these extensions on download — anything else indicates a path
+# that was crafted to escape containment (e.g. ~/Library/Keychains/login.keychain-db).
+_ALLOWED_DOWNLOAD_EXTENSIONS = {".fit", ".fit.gz", ".tcx", ".gpx", ".csv"}
+
 # Sensitive path prefixes — reading or writing these is never legitimate for workout files.
 _SENSITIVE_PREFIXES = (
     "/etc/",
@@ -73,7 +77,28 @@ def _validate_path(
             return None, f"Unsupported file extension '{suffix}'. Allowed: {exts}."
 
     if mode == "download":
+        # Extension allowlist mirrors upload — TP only returns workout file types.
+        # A non-workout extension signals an attempt to overwrite a sensitive $HOME file.
+        suffix = resolved.suffix.lower()
+        # Handle compound extension (.fit.gz) by checking the last two suffixes.
+        compound = "".join(s.lower() for s in resolved.suffixes[-2:])
+        if (
+            compound not in _ALLOWED_DOWNLOAD_EXTENSIONS
+            and suffix not in _ALLOWED_DOWNLOAD_EXTENSIONS
+        ):
+            exts = ", ".join(sorted(_ALLOWED_DOWNLOAD_EXTENSIONS))
+            return (
+                None,
+                f"Download path has unsupported extension '{suffix}'. Allowed: {exts}.",
+            )
+
         home = Path.home().resolve()
+        # $HOME resolving to / means no real user directory is set (Docker/CI root).
+        # Allowing it would make relative_to() pass for every path on the filesystem.
+        if home == Path("/"):
+            return None, (
+                "$HOME resolves to /. Set $HOME to a real user directory before using file tools."
+            )
         # Reject paths outside $HOME — unrestricted writes are not supported.
         try:
             resolved.relative_to(home)

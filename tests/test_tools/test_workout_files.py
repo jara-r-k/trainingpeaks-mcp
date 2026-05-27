@@ -1,6 +1,7 @@
 """Tests for path-traversal defences in workout file tools."""
 
 import gzip
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -115,6 +116,81 @@ class TestValidatePath:
         candidate = str(Path.home() / ".." / ".." / "tmp" / "out")
         resolved, reason = _validate_path(candidate, mode="download")
         assert resolved is None
+
+    # -- HIGH: download extension allowlist ----------------------------------
+
+    def test_download_rejects_extension_not_in_allowlist(self):
+        home = Path.home()
+        bad_paths = [
+            home / "Library" / "Keychains" / "login.keychain-db",
+            home / ".gitconfig",
+            home
+            / "Library"
+            / "Application Support"
+            / "Google"
+            / "Chrome"
+            / "Default"
+            / "Cookies.sqlite",
+            home / "Downloads" / "Cookies",  # no extension
+            home / "Downloads" / "notes.txt",
+        ]
+        for p in bad_paths:
+            resolved, reason = _validate_path(str(p), mode="download")
+            assert (
+                resolved is None
+            ), f"Expected rejection for {p}, got resolved={resolved}"
+            assert (
+                "extension" in reason.lower() or "unsupported" in reason.lower()
+            ), f"Unexpected rejection reason for {p}: {reason}"
+
+    def test_download_accepts_workout_extensions(self):
+        home = Path.home()
+        good_paths = [
+            home / "Downloads" / "activity.fit",
+            home / "Downloads" / "activity.fit.gz",
+            home / "Downloads" / "route.tcx",
+            home / "Downloads" / "track.gpx",
+            home / "Downloads" / "laps.csv",
+        ]
+        for p in good_paths:
+            resolved, reason = _validate_path(str(p), mode="download")
+            assert reason == "", f"Expected acceptance for {p}, got reason={reason!r}"
+
+    # -- MEDIUM: $HOME=/ collapse --------------------------------------------
+
+    def test_home_root_collapse_rejected(self):
+        # Patch Path.home() to simulate a Docker/CI image where $HOME is unset or /.
+        with patch("tp_mcp.tools.workout_files.Path") as mock_path_cls:
+            # Let most Path operations pass through to the real implementation.
+            real_path = Path
+            mock_path_cls.side_effect = real_path
+            mock_path_cls.home.return_value = real_path("/")
+
+            resolved, reason = _validate_path(
+                str(real_path.home() / "activity.fit"), mode="download"
+            )
+        assert (
+            resolved is None
+        ), f"Expected rejection when $HOME=/, got resolved={resolved}"
+        assert "$HOME" in reason and "/" in reason, f"Unexpected reason: {reason}"
+
+    # -- LOW: symlink-into-/etc rejected after resolve -----------------------
+
+    def test_symlink_into_etc_rejected_after_resolve(self, tmp_path):
+        # Create a symlink with an allowed .fit extension that points outside $HOME.
+        # After resolve(), the real target is /etc/passwd (or /private/etc/passwd on macOS),
+        # which must be caught by the sensitive-prefix check before the extension check passes.
+        symlink = tmp_path / "activity.fit"
+        try:
+            os.symlink("/etc/passwd", symlink)
+        except OSError:
+            pytest.skip("Cannot create symlinks in this environment")
+
+        resolved, reason = _validate_path(str(symlink), mode="upload")
+        assert (
+            resolved is None
+        ), f"Symlink pointing to /etc/passwd must be rejected after resolve, got resolved={resolved}"
+        assert "restricted" in reason.lower(), f"Unexpected reason: {reason}"
 
 
 # ---------------------------------------------------------------------------
