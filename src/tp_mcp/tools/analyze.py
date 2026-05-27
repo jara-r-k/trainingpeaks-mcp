@@ -1,9 +1,4 @@
-"""Tool for workout analysis via the Peaksware analysis API.
-
-Follows the prepare/compute pattern:
-  - prepare_workout() — fetches raw analysis data from API
-  - analyse_workout() — transforms raw data into summary output
-"""
+"""Workout analysis via the Peaksware analysis API."""
 
 import json
 import logging
@@ -57,8 +52,6 @@ async def prepare_workout(workout_id: int) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        # Ensure we have a valid token (athlete_id may have come from cache
-        # without triggering token exchange)
         token_result = await client._ensure_access_token()
         if not token_result.success:
             return {
@@ -75,8 +68,6 @@ async def prepare_workout(workout_id: int) -> dict[str, Any]:
                 "message": "No access token available. Re-authenticate.",
             }
 
-        # Analysis API is on a different domain than the main TP API,
-        # so we make a direct httpx call with the Bearer token.
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -153,10 +144,8 @@ def analyse_workout(raw_data: dict[str, Any], workout_id: int) -> dict[str, Any]
     """
     analysis = parse_workout_analysis(raw_data)
 
-    # Save full raw data (including time-series) to file
     data_file = _save_analysis_json(workout_id, raw_data)
 
-    # Build summary
     totals = {t.name: {"value": t.value, "unit": t.unit} for t in analysis.totals}
 
     channels = [

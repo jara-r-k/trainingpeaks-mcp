@@ -21,40 +21,6 @@ DEFAULT_EVENT_RESULTS: list[dict[str, str]] = [
     {"resultType": "Overall"},
 ]
 
-EVENT_TYPES = [
-    "RoadRunning",
-    "RunningTrack",
-    "TrailRunning",
-    "TrackRunning",
-    "CrossCountry",
-    "Running",
-    "RoadCycling",
-    "MountainBiking",
-    "Cyclocross",
-    "TrackCycling",
-    "Cycling",
-    "OpenWaterSwimming",
-    "PoolSwimming",
-    "Triathlon",
-    "MultisportTriathlon",
-    "Xterra",
-    "Duathlon",
-    "Aquabike",
-    "Aquathon",
-    "Multisport",
-    "Regatta",
-    "Rowing",
-    "AlpineSkiing",
-    "NordicSkiing",
-    "SkiMountaineering",
-    "Snowshoe",
-    "Snow",
-    "Adventure",
-    "Obstacle",
-    "SpeedSkate",
-    "Other",
-]
-
 
 def _default_create_event_payload(
     *,
@@ -106,9 +72,7 @@ class CreateEventInput(BaseModel):
     @field_validator("date")
     @classmethod
     def check_date(cls, v: str) -> str:
-        from datetime import date
-
-        date.fromisoformat(v)
+        dt_date.fromisoformat(v)
         return v
 
     @field_validator("priority")

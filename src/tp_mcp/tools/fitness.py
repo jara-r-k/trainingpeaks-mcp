@@ -1,9 +1,4 @@
-"""TOOL-06: tp_get_fitness - Get CTL/ATL/TSB fitness data.
-
-Follows the prepare/compute pattern:
-  - prepare_fitness_data() — fetches raw API data
-  - compute_fitness_metrics() — rounding, status mapping, formatting
-"""
+"""CTL/ATL/TSB fitness data fetch and compute."""
 
 import logging
 from datetime import date, timedelta
@@ -120,8 +115,7 @@ def compute_fitness_metrics(
         daily_data.append(
             {
                 "date": (entry.get("workoutDay") or "").split("T")[0],
-                # Use `or 0` instead of get(key, 0) — the API may return explicit None values,
-                # which bypass dict.get's default.
+                # API may return explicit None; `or 0` handles that.
                 "tss": entry.get("tssActual") or 0,
                 "ctl": round(entry.get("ctl") or 0, 1),
                 "atl": round(entry.get("atl") or 0, 1),

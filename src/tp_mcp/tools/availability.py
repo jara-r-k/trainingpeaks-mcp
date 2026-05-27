@@ -1,6 +1,5 @@
 """Availability tools."""
 
-import logging
 from typing import Any
 
 from pydantic import ValidationError
@@ -11,8 +10,6 @@ from tp_mcp.tools._validation import (
     WorkoutIdInput,
     format_validation_error,
 )
-
-logger = logging.getLogger("tp-mcp")
 
 
 async def tp_get_availability(start_date: str, end_date: str) -> dict[str, Any]:
