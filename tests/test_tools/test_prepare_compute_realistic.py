@@ -24,14 +24,20 @@ class TestFitnessRealisticShapes:
             query_end=date(2026, 3, 31),
             query_days=30,
         )
-        assert result["data"] == []
+        assert result["daily_data"] == []
         assert result["current"] is None
         assert result["days"] == 30
 
     def test_compute_handles_none_tsb(self):
         """TSB=None should be handled gracefully via get() default."""
         raw = [
-            {"workoutDay": "2026-03-01T00:00:00", "tssActual": 0, "ctl": 50.0, "atl": 40.0, "tsb": None}
+            {
+                "workoutDay": "2026-03-01T00:00:00",
+                "tssActual": 0,
+                "ctl": 50.0,
+                "atl": 40.0,
+                "tsb": None,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -46,7 +52,13 @@ class TestFitnessRealisticShapes:
     def test_compute_handles_none_ctl_atl(self):
         """None CTL/ATL should be handled via get() default to 0."""
         raw = [
-            {"workoutDay": "2026-03-01T00:00:00", "tssActual": None, "ctl": None, "atl": None, "tsb": None}
+            {
+                "workoutDay": "2026-03-01T00:00:00",
+                "tssActual": None,
+                "ctl": None,
+                "atl": None,
+                "tsb": None,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -60,9 +72,7 @@ class TestFitnessRealisticShapes:
 
     def test_compute_handles_missing_keys(self):
         """Entries missing expected keys should use defaults from get()."""
-        raw = [
-            {"workoutDay": "2026-03-01T00:00:00"}
-        ]
+        raw = [{"workoutDay": "2026-03-01T00:00:00"}]
         result = compute_fitness_metrics(
             raw_data=raw,
             query_start=date(2026, 3, 1),
@@ -99,7 +109,13 @@ class TestFitnessRealisticShapes:
     def test_compute_date_strips_time_component(self):
         """workoutDay with time component should be stripped to date only."""
         raw = [
-            {"workoutDay": "2026-03-15T12:34:56.789Z", "tssActual": 80, "ctl": 45, "atl": 50, "tsb": -5}
+            {
+                "workoutDay": "2026-03-15T12:34:56.789Z",
+                "tssActual": 80,
+                "ctl": 45,
+                "atl": 50,
+                "tsb": -5,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -112,9 +128,27 @@ class TestFitnessRealisticShapes:
     def test_compute_multi_day_range(self):
         """Multiple entries should all appear and latest becomes current."""
         raw = [
-            {"workoutDay": "2026-03-01T00:00:00", "tssActual": 50, "ctl": 40, "atl": 35, "tsb": 5},
-            {"workoutDay": "2026-03-02T00:00:00", "tssActual": 100, "ctl": 42, "atl": 55, "tsb": -13},
-            {"workoutDay": "2026-03-03T00:00:00", "tssActual": 0, "ctl": 41, "atl": 45, "tsb": -4},
+            {
+                "workoutDay": "2026-03-01T00:00:00",
+                "tssActual": 50,
+                "ctl": 40,
+                "atl": 35,
+                "tsb": 5,
+            },
+            {
+                "workoutDay": "2026-03-02T00:00:00",
+                "tssActual": 100,
+                "ctl": 42,
+                "atl": 55,
+                "tsb": -13,
+            },
+            {
+                "workoutDay": "2026-03-03T00:00:00",
+                "tssActual": 0,
+                "ctl": 41,
+                "atl": 45,
+                "tsb": -4,
+            },
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -129,7 +163,13 @@ class TestFitnessRealisticShapes:
     def test_compute_fitness_status_exhausted(self):
         """TSB <= -25 should map to exhausted status."""
         raw = [
-            {"workoutDay": "2026-03-01T00:00:00", "tssActual": 200, "ctl": 30, "atl": 80, "tsb": -50}
+            {
+                "workoutDay": "2026-03-01T00:00:00",
+                "tssActual": 200,
+                "ctl": 30,
+                "atl": 80,
+                "tsb": -50,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,
@@ -142,7 +182,13 @@ class TestFitnessRealisticShapes:
     def test_compute_fitness_status_very_fresh(self):
         """TSB > 25 should map to very fresh / detraining risk."""
         raw = [
-            {"workoutDay": "2026-03-01T00:00:00", "tssActual": 0, "ctl": 60, "atl": 20, "tsb": 40}
+            {
+                "workoutDay": "2026-03-01T00:00:00",
+                "tssActual": 0,
+                "ctl": 60,
+                "atl": 20,
+                "tsb": 40,
+            }
         ]
         result = compute_fitness_metrics(
             raw_data=raw,

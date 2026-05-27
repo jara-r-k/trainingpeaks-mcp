@@ -77,7 +77,9 @@ async def prepare_fitness_data(
         if response.is_error:
             return {
                 "isError": True,
-                "error_code": response.error_code.value if response.error_code else "API_ERROR",
+                "error_code": (
+                    response.error_code.value if response.error_code else "API_ERROR"
+                ),
                 "message": response.message,
             }
 
@@ -109,7 +111,7 @@ def compute_fitness_metrics(
             "start_date": str(query_start),
             "end_date": str(query_end),
             "days": query_days,
-            "data": [],
+            "daily_data": [],
             "current": None,
         }
 
