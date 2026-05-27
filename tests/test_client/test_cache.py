@@ -1,14 +1,12 @@
 """Tests for multi-level response cache."""
 
 import time
-from unittest.mock import patch
-
-import pytest
 
 from tp_mcp.client.cache import (
     CachedEntry,
     CacheTier,
     ResponseCache,
+    _related_endpoints,
     build_cache_key,
 )
 
@@ -204,3 +202,111 @@ class TestResponseCache:
         cache.put("/api/b", "k1", "data_b", ttl=60.0)
         assert cache.get("/api/a", "k1") == "data_a"
         assert cache.get("/api/b", "k1") == "data_b"
+
+
+class TestRelatedEndpoints:
+    """Tests for the _related_endpoints helper."""
+
+    def test_singular_includes_itself(self):
+        result = _related_endpoints("/athletes/1/event", set())
+        assert "/athletes/1/event" in result
+
+    def test_singular_matches_plural_prefix(self):
+        cached = {"/athletes/1/events/2025-01-01/2025-01-31"}
+        result = _related_endpoints("/athletes/1/event", cached)
+        assert "/athletes/1/events/2025-01-01/2025-01-31" in result
+
+    def test_plural_matches_singular_prefix(self):
+        cached = {"/athletes/1/event"}
+        result = _related_endpoints("/athletes/1/events/2025-01-01/2025-01-31", cached)
+        assert "/athletes/1/event" in result
+
+    def test_id_suffix_stripped_before_family_match(self):
+        # DELETE .../event/42 should invalidate .../events/... list cache
+        cached = {"/athletes/1/events/2025-01-01/2025-01-31"}
+        result = _related_endpoints("/athletes/1/event/42", cached)
+        assert "/athletes/1/events/2025-01-01/2025-01-31" in result
+
+    def test_unrelated_endpoint_not_included(self):
+        cached = {"/athletes/1/workouts/2025-01-01/2025-01-31"}
+        result = _related_endpoints("/athletes/1/event", cached)
+        assert "/athletes/1/workouts/2025-01-01/2025-01-31" not in result
+
+    def test_notes_family(self):
+        # calendarNote (singular) ↔ calendarNotes (plural)
+        cached = {"/athletes/1/calendarNotes/2025-01-01/2025-01-31"}
+        result = _related_endpoints("/athletes/1/calendarNote", cached)
+        assert "/athletes/1/calendarNotes/2025-01-01/2025-01-31" in result
+
+    def test_workouts_family(self):
+        cached = {"/athletes/1/workouts/2025-01-01/2025-01-31"}
+        result = _related_endpoints("/athletes/1/workout", cached)
+        assert "/athletes/1/workouts/2025-01-01/2025-01-31" in result
+
+    def test_empty_store_returns_endpoint_itself(self):
+        result = _related_endpoints("/athletes/1/event", set())
+        assert result == {"/athletes/1/event"}
+
+
+class TestResponseCacheInvalidateFamilies:
+    """Integration tests: invalidating a singular endpoint clears plural list cache."""
+
+    BASE = "/fitness/v6/athletes/12345"
+
+    def _list_key(self, suffix: str) -> str:
+        return f"{self.BASE}/{suffix}"
+
+    def test_create_event_invalidates_events_list(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/events/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"id": 1}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/event")
+
+        assert cache.get(list_ep, "k1") is None
+
+    def test_delete_event_by_id_invalidates_events_list(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/events/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"id": 99}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/event/99")
+
+        assert cache.get(list_ep, "k1") is None
+
+    def test_create_note_invalidates_notes_list(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/calendarNotes/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"id": 5}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/calendarNote")
+
+        assert cache.get(list_ep, "k1") is None
+
+    def test_create_workout_invalidates_workouts_list(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/workouts/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"workoutId": 7}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/workout")
+
+        assert cache.get(list_ep, "k1") is None
+
+    def test_invalidate_does_not_clear_unrelated_endpoint(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/workouts/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"workoutId": 7}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/event")
+
+        assert cache.get(list_ep, "k1") == [{"workoutId": 7}]
+
+    def test_returns_correct_removed_count(self):
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/events/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", "data1", ttl=300.0)
+        cache.put(list_ep, "k2", "data2", ttl=300.0)
+
+        removed = cache.invalidate(f"{self.BASE}/event")
+
+        assert removed == 2

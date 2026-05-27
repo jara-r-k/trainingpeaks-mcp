@@ -7,8 +7,9 @@ network calls. Cache keys are deterministic and order-independent.
 import hashlib
 import json
 import logging
+import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -18,10 +19,10 @@ logger = logging.getLogger("tp-mcp")
 class CacheTier(Enum):
     """TTL tiers for different data freshness requirements."""
 
-    PROFILE = 3600      # 1 hour — rarely changes
+    PROFILE = 3600  # 1 hour — rarely changes
     WORKOUT_LIST = 300  # 5 minutes — updated after syncs
     WORKOUT_DETAIL = 120  # 2 minutes — individual workout data
-    REALTIME = 30       # 30 seconds — actively changing data
+    REALTIME = 30  # 30 seconds — actively changing data
 
 
 @dataclass
@@ -79,6 +80,65 @@ def build_cache_key(
     # the insertion order of dict keys
     canonical = json.dumps(key_parts, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+# Matches a trailing path segment that is a pure numeric ID or an ISO-8601
+# date (e.g. ``/123``, ``/2025-01-01``). Single-char and short alpha segments
+# (resource names like ``event``, ``v6``) are intentionally excluded.
+# Applied repeatedly to strip all such suffixes from list-style endpoints.
+_ID_SUFFIX_RE = re.compile(r"/(\d+|[0-9]{4}-[0-9]{2}-[0-9]{2})$")
+
+
+def _resource_base(endpoint: str) -> str:
+    """Strip trailing ID / date segments to reach the resource name.
+
+    For example::
+
+        /athletes/1/event/42        → /athletes/1/event
+        /athletes/1/events/start/end → /athletes/1/events
+    """
+    base = endpoint
+    while True:
+        stripped = _ID_SUFFIX_RE.sub("", base)
+        if stripped == base:
+            break
+        base = stripped
+    return base
+
+
+def _related_endpoints(endpoint: str, cached_keys: set[str]) -> set[str]:
+    """Return the set of cache keys to invalidate when ``endpoint`` is written.
+
+    A write to ``/foo/bar`` or ``/foo/bar/{id}`` must also invalidate any
+    cached ``/foo/bars*`` list entries, and vice versa — ensuring that
+    singular write endpoints (e.g. ``.../event``) clear plural list caches
+    (e.g. ``.../events/{start}/{end}``).
+
+    The algorithm:
+      1. Strip all trailing ID/date segments to reach the resource name.
+      2. Build the singular and plural variants of that name.
+      3. Include any cached key whose resource base matches either variant,
+         using path-boundary-aware prefix matching (``/`` or end-of-string
+         after the stem) to avoid false matches like ``/event`` ↔ ``/eventType``.
+    """
+    base = _resource_base(endpoint)
+
+    if base.endswith("s"):
+        singular = base[:-1]
+        plural = base
+    else:
+        singular = base
+        plural = base + "s"
+
+    matches: set[str] = set()
+    for key in cached_keys:
+        key_base = _resource_base(key)
+        if key_base in (singular, plural):
+            matches.add(key)
+
+    # Always include the written endpoint itself (even if not yet cached)
+    matches.add(endpoint)
+    return matches
 
 
 class ResponseCache:
@@ -168,8 +228,10 @@ class ResponseCache:
         """Remove cached entries.
 
         Args:
-            endpoint: If provided, only invalidate entries for this
-                endpoint. If None, clear the entire cache.
+            endpoint: If provided, invalidate entries for this endpoint
+                and any related endpoint families (singular ↔ plural
+                cousins sharing the same path prefix). If None, clear
+                the entire cache.
 
         Returns:
             Number of entries removed.
@@ -181,12 +243,16 @@ class ResponseCache:
             logger.debug("Cache INVALIDATE ALL: removed %d entries", count)
             return count
 
-        bucket = self._store.pop(endpoint, {})
-        count = len(bucket)
+        targets = _related_endpoints(endpoint, set(self._store.keys()))
+        count = 0
+        for key in targets:
+            bucket = self._store.pop(key, {})
+            count += len(bucket)
         self._evictions += count
         logger.debug(
-            "Cache INVALIDATE endpoint %s: removed %d entries",
+            "Cache INVALIDATE endpoint %s (+%d related): removed %d entries",
             endpoint,
+            len(targets) - 1,
             count,
         )
         return count
