@@ -1,6 +1,5 @@
 """Calendar note tools."""
 
-import logging
 from datetime import date as dt_date
 from typing import Any
 
@@ -11,8 +10,6 @@ from tp_mcp.tools._validation import (
     WorkoutIdInput,
     format_validation_error,
 )
-
-logger = logging.getLogger("tp-mcp")
 
 
 async def tp_create_note(

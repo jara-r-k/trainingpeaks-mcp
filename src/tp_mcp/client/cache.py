@@ -53,10 +53,6 @@ def build_cache_key(
 ) -> str:
     """Build a deterministic cache key from request components.
 
-    The key is constructed by sorting all parameters alphabetically
-    before hashing, so ordering of dict keys does not affect the
-    result. This prevents collisions caused by parameter reordering.
-
     Args:
         endpoint: The API endpoint path.
         athlete_id: The athlete ID (included for namespace isolation).
