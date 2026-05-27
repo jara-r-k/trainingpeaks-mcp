@@ -5,16 +5,17 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tp_mcp.client.http import APIResponse, ErrorCode
-from tp_mcp.tools.events import (
-    tp_add_note_comment,
-    tp_create_availability,
+from tp_mcp.tools.availability import tp_create_availability, tp_get_availability
+from tp_mcp.tools.events_calendar import (
     tp_create_event,
-    tp_create_note,
     tp_delete_event,
-    tp_get_availability,
     tp_get_events,
     tp_get_focus_event,
     tp_get_next_event,
+)
+from tp_mcp.tools.notes import (
+    tp_add_note_comment,
+    tp_create_note,
     tp_get_note,
     tp_get_note_comments,
     tp_update_note,
@@ -27,7 +28,7 @@ class TestGetFocusEvent:
         response = APIResponse(
             success=True, data={"name": "IM World Champs", "priority": "A"}
         )
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -40,7 +41,7 @@ class TestGetFocusEvent:
     @pytest.mark.asyncio
     async def test_no_focus_event(self):
         response = APIResponse(success=True, data=None)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -55,7 +56,7 @@ class TestGetNextEvent:
     @pytest.mark.asyncio
     async def test_returns_event(self):
         response = APIResponse(success=True, data={"name": "Local 10K"})
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -71,7 +72,7 @@ class TestGetEvents:
     async def test_list_events(self):
         events = [{"name": "Race A"}, {"name": "Race B"}]
         response = APIResponse(success=True, data=events)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -85,7 +86,7 @@ class TestGetEvents:
     async def test_one_year_window_accepted(self):
         """±1y windows are needed for race-target intent — used to fail under the 90-day cap."""
         response = APIResponse(success=True, data=[])
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -105,7 +106,7 @@ class TestCreateEvent:
     @pytest.mark.asyncio
     async def test_create_with_priority_and_ctl(self):
         response = APIResponse(success=True, data={"eventId": 501})
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.post = AsyncMock(return_value=response)
@@ -144,7 +145,7 @@ class TestDeleteEvent:
     @pytest.mark.asyncio
     async def test_delete_success(self):
         response = APIResponse(success=True, data=None)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.events_calendar.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.delete = AsyncMock(return_value=response)
@@ -163,7 +164,7 @@ class TestCreateNote:
     @pytest.mark.asyncio
     async def test_create_note(self):
         response = APIResponse(success=True, data={"calendarNoteId": 701})
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.post = AsyncMock(return_value=response)
@@ -184,7 +185,7 @@ class TestAvailability:
     async def test_get_availability(self):
         data = [{"id": 1, "startDate": "2026-04-01", "limited": False}]
         response = APIResponse(success=True, data=data)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.availability.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -197,7 +198,7 @@ class TestAvailability:
     @pytest.mark.asyncio
     async def test_create_limited_with_sports(self):
         response = APIResponse(success=True, data={"availabilityId": 801})
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.availability.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.post = AsyncMock(return_value=response)
@@ -235,7 +236,7 @@ class TestGetNote:
             "attachments": [],
         }
         response = APIResponse(success=True, data=data)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -260,7 +261,7 @@ class TestGetNote:
         response = APIResponse(
             success=False, error_code=ErrorCode.NOT_FOUND, message="Not found"
         )
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -292,7 +293,7 @@ class TestUpdateNote:
         updated = {**existing, "title": "New Title", "description": "New desc"}
         get_response = APIResponse(success=True, data=existing)
         put_response = APIResponse(success=True, data=updated)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=get_response)
@@ -330,7 +331,7 @@ class TestUpdateNote:
         get_response = APIResponse(
             success=False, error_code=ErrorCode.NOT_FOUND, message="Not found"
         )
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=get_response)
@@ -360,7 +361,7 @@ class TestGetNoteComments:
             }
         ]
         response = APIResponse(success=True, data=data)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -376,7 +377,7 @@ class TestGetNoteComments:
     @pytest.mark.asyncio
     async def test_get_comments_empty(self):
         response = APIResponse(success=True, data=[])
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.get = AsyncMock(return_value=response)
@@ -398,7 +399,7 @@ class TestAddNoteComment:
     @pytest.mark.asyncio
     async def test_add_comment_success(self):
         response = APIResponse(success=True, data=None)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
             mock_instance.put = AsyncMock(return_value=response)

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tp_mcp.client.http import APIResponse, ErrorCode
-from tp_mcp.tools.events import tp_get_notes
+from tp_mcp.tools.notes import tp_get_notes
 
 
 def _client_patch(response: APIResponse, athlete_id: int = 123):
@@ -38,7 +38,7 @@ class TestGetNotes:
             },
         ]
         response = APIResponse(success=True, data=raw)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = _client_patch(response)
             result = await tp_get_notes("2026-01-01", "2026-12-31")
 
@@ -72,7 +72,7 @@ class TestGetNotes:
             },
         ]
         response = APIResponse(success=True, data=raw)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = _client_patch(response)
             result = await tp_get_notes("2026-06-01", "2026-06-30")
 
@@ -83,7 +83,7 @@ class TestGetNotes:
     @pytest.mark.asyncio
     async def test_empty_range(self):
         response = APIResponse(success=True, data=[])
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = _client_patch(response)
             result = await tp_get_notes("2026-06-01", "2026-06-30")
 
@@ -95,7 +95,7 @@ class TestGetNotes:
         response = APIResponse(
             success=False, error_code=ErrorCode.API_ERROR, message="upstream 500"
         )
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = _client_patch(response)
             result = await tp_get_notes("2026-06-01", "2026-06-30")
 
@@ -118,7 +118,7 @@ class TestGetNotes:
     async def test_no_athlete_id_returns_auth_error(self):
         mock_instance = AsyncMock()
         mock_instance.ensure_athlete_id = AsyncMock(return_value=None)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = mock_instance
             result = await tp_get_notes("2026-01-01", "2026-12-31")
 
@@ -129,7 +129,7 @@ class TestGetNotes:
     async def test_date_without_time_component(self):
         raw = [{"id": 1, "title": "No T", "noteDate": "2026-06-01", "isHidden": False}]
         response = APIResponse(success=True, data=raw)
-        with patch("tp_mcp.tools.events.TPClient") as mock_client:
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
             mock_client.return_value.__aenter__.return_value = _client_patch(response)
             result = await tp_get_notes("2026-06-01", "2026-06-30")
 
