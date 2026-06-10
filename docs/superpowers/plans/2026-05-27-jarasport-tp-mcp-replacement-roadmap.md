@@ -544,10 +544,10 @@ Top 3 risks (impact × likelihood, revision 1): **R-105 (scope creep)**, **R-102
 
 | ID    | Question | Owner | By when |
 |-------|----------|-------|---------|
-| Q-101 | Vercel plan (Hobby vs Pro) — does Pro's `maxDuration: 800` justify the cost for our use case, or is Hobby's 300s enough? | Owner | **P0 kick-off — BLOCKER** |
+| Q-101 | ~~Vercel plan (Hobby vs Pro)?~~ **RESOLVED (2026-06-10): Hobby** (owner decision). `maxDuration` ≤ 300s is ample — single MCP requests target well under 25s and roster fanout stays in RDH's per-athlete cron decomposition. Hobby's native crons are daily-granularity, so R-102 pre-warm pings come from an external scheduler or RDH's existing cron path. Revisit only if P4 burn-in cold-start p95 breaches the §6 workflow budgets. | — | — |
 | Q-102 | Credential-store prod backend: SQLite-on-Vercel-volume (small, simple) vs Vercel Postgres / Neon (multi-region) vs Vercel KV (Redis-like)? **Revision 1 (REC4):** elevated to P0 kick-off blocker. Interface depends on transactional semantics (per-row write lock for token refresh — see §3 A5). Default recommendation: **Vercel Postgres** for prod (transactional, scales beyond a single Vercel volume), `better-sqlite3` for dev | Owner | **P0 kick-off — BLOCKER (was P0 week 2)** |
 | Q-103 | Multi-tenant pricing model: free for Coach Simon's athletes; do we monetise other coaches at all in scope of this rebuild, or is that strictly out-of-scope (deferred to a later product)? | Product | Before P4 cutover |
-| Q-104 | MCP framework: stay with `@modelcontextprotocol/sdk` (official) or migrate to FastMCP-TS in P2 if the official SDK's ergonomics frustrate us? **Revision 1 (REC2):** decision moved to P0 before scaffolding. Default recommendation: official SDK + a thin internal `defineTool({ name, schema, handler })` wrapper that mimics FastMCP-TS ergonomics (Zod-derived JSON Schema). Avoids re-litigating at P1 | P0 design | **P0 kick-off (was end of P1)** |
+| Q-104 | MCP framework: stay with `@modelcontextprotocol/sdk` (official) or migrate to FastMCP-TS in P2 if the official SDK's ergonomics frustrate us? **Revision 1 (REC2):** decision moved to P0 before scaffolding. Default recommendation: official SDK + a thin internal `defineTool({ name, schema, handler })` wrapper that mimics FastMCP-TS ergonomics (Zod-derived JSON Schema). Avoids re-litigating at P1. **RESOLVED (2026-06-10): P0 shipped the default** — official SDK v1.29 + `defineTool` Zod wrapper (`src/tp-mcp/server/define-tool.ts`) | — | — |
 | Q-105 | Renovate-bot configuration: groups (production minor+patch) vs everything-pinned-exact. **Default:** group dev-deps + minor/patch, hold majors for human review | P0 session | P0 task week 2 |
 | Q-106 | ~~npm name: `jarasport-tp-mcp` available?~~ **RESOLVED (revision 1):** publish under `@jarasport/tp-mcp` private scope. Sidesteps name-collision risk entirely; aligns with Q-110 default (private until P3) | — | — |
 | Q-107 | Local stdio fallback `TP_MCP_AUTH_IMPL=env`: should it work for any `user_id`, or only one (Coach Simon)? **Default:** accept any `user_id` matching a row in the credential store; the env-var path bypasses Clerk but does not invent a `user_id`. Single-user simplification rejected — would block other Jarasport coaches from local development | P0 session | P0 design |
@@ -572,7 +572,7 @@ Top 3 risks (impact × likelihood, revision 1): **R-105 (scope creep)**, **R-102
 - **Promise-coalesced refresh generalisation** (raised in critic §9): the TS port's module-scope `refreshPromise` becomes per-user `Map<user_id, Promise<TPAccessToken>>` per §3 A5. Add explicit P0 sub-task: "generalise promise coalescing to per-user keying".
 - **`/api/mcp/*` cross-pollination risk** (raised in critic §9): MCP and RDH share a Vercel project. Hard convention: MCP code never imports from RDH; RDH never imports from MCP (only HTTP calls). Enforced via lint rule + import-boundary test.
 
-Top 3 open questions (revision 1): **Q-101 (Vercel plan)**, **Q-102 (credential-store backend — elevated)**, **Q-104 (FastMCP-TS vs official + wrapper — elevated)**.
+Top 3 open questions (updated 2026-06-10 — Q-101 resolved Hobby, Q-104 resolved in P0): **Q-102 (credential-store prod backend — default Vercel Postgres, confirm by P2)**, **Q-103 (pricing scope)**, **Q-108 (TP drift probe)**.
 
 ---
 
