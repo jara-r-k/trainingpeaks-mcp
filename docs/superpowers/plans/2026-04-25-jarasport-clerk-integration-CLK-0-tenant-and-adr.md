@@ -1,14 +1,16 @@
 ---
 title: jarasport-clerk-integration-CLK-0-tenant-and-adr
 plan: CLK Phase 0 — Clerk Tenant Provisioning + ADR-0001 Sign-off
-status: pending
+status: done
 owner: jara-r-k
 date: 2026-04-25
+completed: 2026-06-10
 project: trainingpeaks-mcp
 parent: jarasport-clerk-integration-master
 phase: CLK-0
-actionable: auto
-next_action: Task 1 — Create Clerk dev tenant
+actionable: done
+progress: "Dev executed 2026-06-10 against live dashboard: Clerk app 'RDH' (single-app model replaces dev/prod two-app split), jarasport-mcp template live (6 custom claims; iss/sub/azp are Clerk-reserved), JWKS verified RS256, ADR-0001 promoted accepted-operational, handoffs CLK-0→CLK-1 and CLK-0→CLK-3 written. Prod instance deferred to P4/CLK-6 (needs prod domain). Full mint-verify round-trip lands with CLK-3."
+next_action: CLK-1 (TS verifier env wiring — see HANDOFFS/CLK-0-to-CLK-1.md) and CLK-3 unblock in parallel
 depends_on: none
 ---
 

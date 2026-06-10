@@ -1,7 +1,8 @@
 ---
 title: ADR-0001 — Clerk Boundary
-status: accepted
+status: accepted-operational
 date: 2026-04-25
+operational_date: 2026-06-10
 deciders: Jara (owner)
 supersedes: none
 superseded_by: none
@@ -182,3 +183,15 @@ Next scheduled review: 2026-10-25 (6 months).
 - Svix webhook verification: https://docs.svix.com/receiving/verifying-payloads/how
 - Rebuild spec §Auth: [../specs/2026-04-25-jarasport-tp-mcp-design.md](../specs/2026-04-25-jarasport-tp-mcp-design.md)
 - CLK spec: [../specs/2026-04-25-jarasport-clerk-integration-design.md](../specs/2026-04-25-jarasport-clerk-integration-design.md)
+
+## Revisions
+
+| # | Date | Change |
+|---|------|--------|
+| 1 | 2026-06-10 | CLK-0 executed against the live Clerk dashboard. Wire-format reconciliation: (a) Clerk **reserves** `iss`, `sub`, `azp`, `exp`, `iat`, `nbf` — they are emitted automatically and cannot appear in the template's custom-claims JSON; the `jarasport-mcp` template therefore defines only `email`, `email_verified`, `org_id`, `org_role`, `plan`, `tp_connected`. (b) `email_verified` uses Clerk's `{{user.email_verified}}` shorthand rather than the drafted comparison expression. (c) Tenant model: one Clerk application ("RDH") with Development + Production instances replaces the drafted two-application (`jarasport-dev`/`jarasport-prod`) split; dev issuer is `https://hip-emu-91.clerk.accounts.dev`, production instance deferred to P4/CLK-6 (requires the prod domain). (d) Verifier implementation is TypeScript in `jarasport-tp-mcp` (`src/tp-mcp/auth/clerk.ts`), not the drafted `tp_mcp/auth/clerk.py` — per the 2026-05-27 replacement roadmap. |
+
+## Sign-offs
+
+| Role  | Name | Date       | Notes |
+|:------|:-----|:-----------|:------|
+| Owner | Jara | 2026-06-10 | Dev smoke = template persisted + JWKS endpoint serving RS256 key (full token round-trip lands with the first frontend session, CLK-3/P1) |

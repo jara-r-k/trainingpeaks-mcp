@@ -50,7 +50,7 @@ Update whenever a phase transitions between statuses. Timestamps in `YYYY-MM-DD`
 
 | Phase  | Name                            | Status      | Plan file                                                                        | Started    | Completed  | DoD Signed Off | Blocked On |
 |:-------|:--------------------------------|:------------|:---------------------------------------------------------------------------------|:-----------|:-----------|:---------------|:-----------|
-| CLK-0  | Tenant + ADR-0001               | PENDING     | `2026-04-25-jarasport-clerk-integration-CLK-0-tenant-and-adr.md`                 | —          | —          | —              | —          |
+| CLK-0  | Tenant + ADR-0001               | DONE (dev; prod instance deferred to P4/CLK-6) | `2026-04-25-jarasport-clerk-integration-CLK-0-tenant-and-adr.md`                 | 2026-06-10 | 2026-06-10 | 2026-06-10-JRK | —          |
 | CLK-1  | Backend JWT middleware          | NOT STARTED | `2026-04-25-jarasport-clerk-integration-CLK-1-backend-jwt-middleware.md`         | —          | —          | —              | CLK-0      |
 | CLK-2  | CredentialStore + endpoints     | NOT STARTED | `2026-04-25-jarasport-clerk-integration-CLK-2-credential-store-endpoints.md`     | —          | —          | —              | CLK-1      |
 | CLK-3  | Frontend auth shell             | NOT STARTED | `2026-04-25-jarasport-clerk-integration-CLK-3-frontend-auth-shell.md`            | —          | —          | —              | CLK-0      |
@@ -105,8 +105,8 @@ Between-phase contracts. Written by the producing phase, read by the consuming p
 
 | From   | To      | Handoff file                                          | Status       | Summary of contract |
 |:-------|:--------|:------------------------------------------------------|:-------------|:--------------------|
-| CLK-0  | CLK-1   | `HANDOFFS/CLK-0-to-CLK-1.md`                          | not written  | JWKS URL, tenant names, JWT template name, expected claims, signing algorithm |
-| CLK-0  | CLK-3   | `HANDOFFS/CLK-0-to-CLK-3.md`                          | not written  | Publishable key, sign-in URL, sign-up URL, appearance token schema |
+| CLK-0  | CLK-1   | `HANDOFFS/CLK-0-to-CLK-1.md`                          | written 2026-06-10 | JWKS URL, tenant names, JWT template name, expected claims, signing algorithm |
+| CLK-0  | CLK-3   | `HANDOFFS/CLK-0-to-CLK-3.md`                          | written 2026-06-10 | Publishable key, sign-in URL, sign-up URL, appearance token schema |
 | CLK-1  | CLK-2   | `HANDOFFS/CLK-1-to-CLK-2.md`                          | not written  | `UserContext` shape, middleware mount point, error-body format |
 | CLK-1  | TP-P2   | `HANDOFFS/CLK-1-to-P2.md`                             | not written  | `tp_mcp/auth/clerk.py` public API, dev-bypass contract, fake-JWT helper |
 | CLK-2  | CLK-4   | `HANDOFFS/CLK-2-to-CLK-4.md`                          | not written  | `/credentials` endpoint contracts, error codes, rate limits |
