@@ -240,6 +240,11 @@ TOOLS = [
                 },
                 "feeling": {"type": "integer", "description": "Feeling score 0-10"},
                 "rpe": {"type": "integer", "description": "RPE score 1-10"},
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": "Whether to hide the workout",
+                    "default": False,
+                },
             },
             "required": ["date", "sport", "title"],
         },
@@ -271,6 +276,10 @@ TOOLS = [
                 "coach_comment": {"type": "string"},
                 "feeling": {"type": "integer", "description": "0-10"},
                 "rpe": {"type": "integer", "description": "1-10"},
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": "Whether to hide the workout",
+                },
                 "structure": {
                     "type": ["object", "string"],
                     "description": STRUCTURE_DESCRIPTION,
@@ -1111,6 +1120,7 @@ async def _h_create_workout(args):
         tags=args.get("tags"),
         feeling=args.get("feeling"),
         rpe=args.get("rpe"),
+        is_hidden=args.get("is_hidden", False),
     )
 
 
@@ -1133,6 +1143,7 @@ async def _h_update_workout(args):
         rpe=args.get("rpe"),
         structure=args.get("structure"),
         structured_workout=args.get("structured_workout"),
+        is_hidden=args.get("is_hidden"),
     )
 
 
