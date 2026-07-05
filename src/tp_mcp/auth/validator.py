@@ -36,6 +36,34 @@ class AuthResult:
         return self.status == AuthStatus.VALID
 
 
+def _resolve_self_athlete_id(user_data: dict) -> int | None:
+    """Resolve the account holder's OWN athlete ID from a /users/v3/user payload.
+
+    Coach accounts list many athletes in `athletes`; the first entry is an
+    arbitrary roster member, not the coach. Match the coach's own entry the
+    same way tp_list_athletes flags is_self: coachedBy == personId AND the
+    entry email matches the account email. Falls back to the first roster
+    entry, then personId, so solo accounts and sparse payloads still resolve.
+    """
+    person_id = user_data.get("personId")
+    account_email = (user_data.get("email") or "").lower()
+    athletes = user_data.get("athletes", [])
+
+    for a in athletes:
+        entry_email = (a.get("email") or "").lower()
+        if a.get("coachedBy") == person_id and entry_email == account_email:
+            self_id = a.get("athleteId")
+            if self_id:
+                return self_id
+
+    if athletes:
+        first_id = athletes[0].get("athleteId")
+        if first_id:
+            return first_id
+
+    return person_id
+
+
 async def validate_auth(cookie: str) -> AuthResult:
     """Validate a TrainingPeaks auth cookie against the API.
 
@@ -85,11 +113,7 @@ async def validate_auth(cookie: str) -> AuthResult:
                             user_data = user_resp.json().get("user", {})
                             email = user_data.get("email")
                             user_id = user_data.get("userId")
-                            athletes = user_data.get("athletes", [])
-                            if athletes:
-                                athlete_id = athletes[0].get("athleteId")
-                            if not athlete_id:
-                                athlete_id = user_data.get("personId")
+                            athlete_id = _resolve_self_athlete_id(user_data)
                     except httpx.RequestError:
                         pass  # User info is best-effort; auth is still valid
 
