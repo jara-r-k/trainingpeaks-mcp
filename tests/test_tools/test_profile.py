@@ -26,6 +26,7 @@ COACH_PAYLOAD = {
                 "lastName": "Coach",
                 "email": "stevan@example.com",
                 "coachedBy": 900,
+                "userType": 4,
             },
             {
                 "athleteId": 201,
@@ -33,6 +34,7 @@ COACH_PAYLOAD = {
                 "lastName": "Horton",
                 "email": "charlotte@example.com",
                 "coachedBy": 900,
+                "userType": 1,
             },
         ],
     }
@@ -156,3 +158,37 @@ class TestListAthletes:
         athletes = {a["athlete_id"]: a for a in result["athletes"]}
         assert athletes[100]["is_self"] is True
         assert athletes[201]["is_self"] is False
+
+    @pytest.mark.asyncio
+    async def test_includes_user_type(self):
+        """Roster entries carry userType so premium-cohort filtering
+        (user_type in {1, 4}) works without a per-athlete fanout (PRO-155)."""
+        client = AsyncMock()
+        client._get_user_data = AsyncMock(return_value=COACH_PAYLOAD["user"])
+        with patch("tp_mcp.tools.profile.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_list_athletes()
+
+        athletes = {a["athlete_id"]: a for a in result["athletes"]}
+        assert athletes[100]["user_type"] == 4
+        assert athletes[201]["user_type"] == 1
+
+    @pytest.mark.asyncio
+    async def test_user_type_missing_is_none(self):
+        """An entry without userType surfaces user_type: None, not a KeyError."""
+        payload = {
+            "personId": 900,
+            "email": "stevan@example.com",
+            "athletes": [
+                {"athleteId": 301, "firstName": "No", "lastName": "Type"},
+            ],
+        }
+        client = AsyncMock()
+        client._get_user_data = AsyncMock(return_value=payload)
+        with patch("tp_mcp.tools.profile.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_list_athletes()
+
+        (entry,) = result["athletes"]
+        assert entry["athlete_id"] == 301
+        assert entry["user_type"] is None
