@@ -125,7 +125,10 @@ async def tp_list_athletes() -> dict[str, Any]:
     """List athletes available to this account (coach accounts).
 
     Returns:
-        Dict with athletes list, each containing athlete_id, name, and is_self flag.
+        Dict with athletes list, each containing athlete_id, name, is_self flag,
+        and user_type (TrainingPeaks account-type code from the roster entry;
+        premium cohort is user_type 1 or 4; None when absent). Exposing it here
+        avoids a per-athlete fanout just to filter by account type.
     """
     async with TPClient() as client:
         user_data = await client._get_user_data()
@@ -158,6 +161,7 @@ async def tp_list_athletes() -> dict[str, Any]:
                     "athlete_id": a.get("athleteId"),
                     "name": f"{first} {last}".strip(),
                     "is_self": is_self,
+                    "user_type": a.get("userType"),
                 }
             )
 
