@@ -125,7 +125,12 @@ async def tp_list_athletes() -> dict[str, Any]:
     """List athletes available to this account (coach accounts).
 
     Returns:
-        Dict with athletes list, each containing athlete_id, name, and is_self flag.
+        Dict with athletes list, each containing athlete_id, name, is_self flag,
+        and user_type. `user_type` is TP's userType for the athlete (1 = premium
+        coach-paid, 4 = premium self-paid, 6 = basic); it is carried straight
+        from the /users/v3/user athlete entry so a coach roster premium filter
+        (userType in {1, 4}) can run off the list without a per-athlete settings
+        call. It is None when the TP tier omits userType.
     """
     async with TPClient() as client:
         user_data = await client._get_user_data()
@@ -158,6 +163,7 @@ async def tp_list_athletes() -> dict[str, Any]:
                     "athlete_id": a.get("athleteId"),
                     "name": f"{first} {last}".strip(),
                     "is_self": is_self,
+                    "user_type": a.get("userType"),
                 }
             )
 

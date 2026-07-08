@@ -26,6 +26,7 @@ COACH_PAYLOAD = {
                 "lastName": "Coach",
                 "email": "stevan@example.com",
                 "coachedBy": 900,
+                "userType": 6,
             },
             {
                 "athleteId": 201,
@@ -33,6 +34,7 @@ COACH_PAYLOAD = {
                 "lastName": "Horton",
                 "email": "charlotte@example.com",
                 "coachedBy": 900,
+                "userType": 1,
             },
         ],
     }
@@ -156,3 +158,45 @@ class TestListAthletes:
         athletes = {a["athlete_id"]: a for a in result["athletes"]}
         assert athletes[100]["is_self"] is True
         assert athletes[201]["is_self"] is False
+
+    @pytest.mark.asyncio
+    async def test_includes_user_type(self):
+        """user_type is carried through from the /users/v3/user athlete entry
+        so the coach roster premium filter (userType in {1, 4}) can run off the
+        list without a per-athlete settings call."""
+        client = AsyncMock()
+        client._get_user_data = AsyncMock(return_value=COACH_PAYLOAD["user"])
+        with patch("tp_mcp.tools.profile.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_list_athletes()
+
+        athletes = {a["athlete_id"]: a for a in result["athletes"]}
+        assert athletes[201]["user_type"] == 1  # premium (coach-paid)
+        assert athletes[100]["user_type"] == 6  # coach's own basic entry
+
+    @pytest.mark.asyncio
+    async def test_user_type_is_none_when_absent(self):
+        """A TP tier that omits userType must surface user_type=None, not raise
+        or invent a value — the premium filter then excludes it (matches the
+        cron's `typeof user_type === 'number'` guard)."""
+        payload = {
+            "personId": 900,
+            "email": "stevan@example.com",
+            "athletes": [
+                {
+                    "athleteId": 300,
+                    "firstName": "No",
+                    "lastName": "Type",
+                    "email": "notype@example.com",
+                    "coachedBy": 900,
+                    # no userType key
+                },
+            ],
+        }
+        client = AsyncMock()
+        client._get_user_data = AsyncMock(return_value=payload)
+        with patch("tp_mcp.tools.profile.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_list_athletes()
+
+        assert result["athletes"][0]["user_type"] is None
