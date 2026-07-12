@@ -36,6 +36,14 @@ COACH_PAYLOAD = {
                 "coachedBy": 900,
                 "userType": 1,
             },
+            {
+                "athleteId": 305,
+                "firstName": "Priya",
+                "lastName": "Patel",
+                "email": "priya@example.com",
+                "coachedBy": 900,
+                "userType": 4,
+            },
         ],
     }
 }
@@ -172,7 +180,12 @@ class TestListAthletes:
 
         athletes = {a["athlete_id"]: a for a in result["athletes"]}
         assert athletes[201]["user_type"] == 1  # premium (coach-paid)
+        assert athletes[305]["user_type"] == 4  # premium (self-paid)
         assert athletes[100]["user_type"] == 6  # coach's own basic entry
+        # The whole point of carrying user_type on the roster: no per-athlete
+        # fanout. One user-data read, zero further API calls.
+        client._get_user_data.assert_awaited_once()
+        client.get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_user_type_is_none_when_absent(self):
