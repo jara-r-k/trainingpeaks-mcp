@@ -69,3 +69,15 @@ Thumbs.db
 
 # Empty Claude Code skills scaffold
 .claude/
+
+# --- Secrets / credentials (added by secrets-scan remediation 2026-07-26) ---
+.env.*
+!.env.example
+*.pem
+*.p12
+id_rsa
+id_ed25519
+.npmrc
+.netrc
+credentials.json
+service-account*.json
