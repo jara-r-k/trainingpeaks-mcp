@@ -6,7 +6,12 @@ import pytest
 
 from tp_mcp.client.context import athlete_override
 from tp_mcp.client.http import APIResponse, TPClient
-from tp_mcp.tools.profile import tp_get_profile, tp_list_athletes
+from tp_mcp.tools.profile import (
+    _account_fields,
+    _derive_tier,
+    tp_get_profile,
+    tp_list_athletes,
+)
 
 # Coach account payload as returned (nested) by /users/v3/user.
 # The coach's own athlete entry is athleteId 100; two coached athletes follow.
@@ -36,9 +41,51 @@ COACH_PAYLOAD = {
                 "coachedBy": 900,
                 "userType": 1,
             },
+            {
+                "athleteId": 305,
+                "firstName": "Priya",
+                "lastName": "Patel",
+                "email": "priya@example.com",
+                "coachedBy": 900,
+                "userType": 4,
+            },
         ],
     }
 }
+
+# Roster carrying the fuller premium/account fields, for the `account`
+# sub-dict / tier-derivation coverage (Premium/Coach-Paid/Trial/Basic, #134).
+ROSTER = [
+    {
+        "athleteId": 100,
+        "firstName": "Stevan",
+        "lastName": "Coach",
+        "email": "stevan@example.com",
+        "coachedBy": 100,
+        # Premium-ish fields (passthrough). Active premium = future expireOn.
+        "expireOn": "2099-01-01T00:00:00",
+        "athleteType": 1,
+        "userType": 1,
+        "premiumTrial": None,
+        "premiumTrialDaysRemaining": 0,
+        "downgradeAllowed": True,
+        "downgradeAllowedOn": "2099-01-01T00:00:00",
+        "lastUpgradeOn": "2025-01-01T00:00:00",
+    },
+    {
+        "athleteId": 201,
+        "firstName": "Charlotte",
+        "lastName": "Horton",
+        "email": "charlotte@example.com",
+        "coachedBy": 100,
+        "expireOn": "2017-01-28T03:17:00",  # expired
+        "athleteType": 4,
+        "userType": 6,
+        "premiumTrial": None,
+        "premiumTrialDaysRemaining": 0,
+        "downgradeAllowed": False,
+    },
+]
 
 
 @pytest.fixture(autouse=True)
@@ -117,6 +164,11 @@ class TestGetProfileAthleteOverride:
         assert result["athlete_id"] == 201
         assert result["name"] == "Charlotte Horton"
         assert result["email"] == "charlotte@example.com"
+        # Premium status is not knowable for a coached athlete from this
+        # endpoint (#134) — but the raw account fields ARE surfaced under
+        # `account` for caller-side analysis.
+        assert result["account_type"] is None
+        assert result["account"]["user_type"] == 1
 
     @pytest.mark.asyncio
     async def test_honours_athlete_by_id(self):
@@ -163,7 +215,7 @@ class TestListAthletes:
     async def test_includes_user_type(self):
         """user_type is carried through from the /users/v3/user athlete entry
         so the coach roster premium filter (userType in {1, 4}) can run off the
-        list without a per-athlete settings call."""
+        list without a per-athlete settings call (PRO-155)."""
         client = AsyncMock()
         client._get_user_data = AsyncMock(return_value=COACH_PAYLOAD["user"])
         with patch("tp_mcp.tools.profile.TPClient") as mock_client:
@@ -172,7 +224,12 @@ class TestListAthletes:
 
         athletes = {a["athlete_id"]: a for a in result["athletes"]}
         assert athletes[201]["user_type"] == 1  # premium (coach-paid)
+        assert athletes[305]["user_type"] == 4  # premium (self-paid)
         assert athletes[100]["user_type"] == 6  # coach's own basic entry
+        # The whole point of carrying user_type on the roster: no per-athlete
+        # fanout. One user-data read, zero further API calls.
+        client._get_user_data.assert_awaited_once()
+        client.get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_user_type_is_none_when_absent(self):
@@ -199,4 +256,100 @@ class TestListAthletes:
             mock_client.return_value.__aenter__.return_value = client
             result = await tp_list_athletes()
 
-        assert result["athletes"][0]["user_type"] is None
+        (entry,) = result["athletes"]
+        assert entry["athlete_id"] == 300
+        assert entry["user_type"] is None
+
+    @pytest.mark.asyncio
+    async def test_surfaces_account_block(self):
+        """tp_list_athletes also carries an `account` sub-dict per entry (#134)
+        — raw passthrough plus the derived `tier` so a caller can correlate
+        against known coach-paid vs self-paid vs free athletes."""
+        client = AsyncMock()
+        client._get_user_data = AsyncMock(
+            return_value={
+                "personId": 100,
+                "email": "stevan@example.com",
+                "athletes": ROSTER,
+            }
+        )
+        with patch("tp_mcp.tools.profile.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_list_athletes()
+
+        assert len(result["athletes"]) == 2
+        coach, charlotte = result["athletes"]
+        assert coach["is_self"] is True and coach["athlete_id"] == 100
+        # account block carries the raw fields + the derived tier
+        assert coach["account"]["athlete_type"] == 1
+        assert coach["account"]["expired"] is False  # future expireOn
+        assert coach["account"]["tier"] == "premium_self"
+        assert charlotte["account"]["athlete_type"] == 4
+        assert charlotte["account"]["expired"] is True  # 2017
+        assert charlotte["account"]["tier"] == "basic"
+
+
+class TestDeriveTier:
+    """Verified live against the TP UI «Account Type» label on 10 athletes
+    spanning all four states (2026-06-28 sync). Order matters: trial > active
+    subscription > lapsed-tier-1 (coach-paid) > default basic."""
+
+    def test_premium_self_paid_active_subscription(self):
+        # Active personal subscription: future expireOn.
+        assert _derive_tier(expired=False, user_type=4, trial_days=0) == "premium_self"
+
+    def test_premium_coach_paid_lapsed_personal_tier_1(self):
+        # Coach-paid: personal premium lapsed, tier-1 user type persists.
+        assert _derive_tier(expired=True, user_type=1, trial_days=0) == "premium_coach"
+
+    def test_basic_lapsed_non_premium_tier(self):
+        # Basic: lapsed with non-premium user_type (6).
+        assert _derive_tier(expired=True, user_type=6, trial_days=0) == "basic"
+
+    def test_basic_with_other_non_premium_user_type(self):
+        # Anything not 1 is basic when expired (saw 6/4/2 etc. in the wild).
+        assert _derive_tier(expired=True, user_type=4, trial_days=0) == "basic"
+
+    def test_premium_trial_wins_over_other_signals(self):
+        # Trial stays active even though expireOn just lapsed.
+        assert _derive_tier(expired=True, user_type=4, trial_days=4) == "premium_trial"
+        assert _derive_tier(expired=False, user_type=4, trial_days=7) == "premium_trial"
+
+    def test_none_when_expired_unknown(self):
+        assert _derive_tier(expired=None, user_type=6, trial_days=0) is None
+
+
+class TestAccountFields:
+    """`_account_fields` is a passthrough surface for premium/account flags
+    whose semantics aren't documented by TP — these only pin the SHAPE so the
+    keys don't drift, plus the ONE derived bit (`expired`)."""
+
+    def test_passes_through_known_fields(self):
+        out = _account_fields(
+            {
+                "expireOn": "2099-01-01T00:00:00",
+                "athleteType": 1,
+                "userType": 1,
+                "premiumTrial": "trial",
+                "premiumTrialDaysRemaining": 5,
+                "downgradeAllowed": True,
+                "downgradeAllowedOn": "2099-01-01",
+                "lastUpgradeOn": "2025-01-01",
+            }
+        )
+        assert out["expire_on"] == "2099-01-01T00:00:00"
+        assert out["athlete_type"] == 1 and out["user_type"] == 1
+        assert out["premium_trial"] == "trial"
+        assert out["premium_trial_days_remaining"] == 5
+        assert out["downgrade_allowed"] is True
+        assert out["downgrade_allowed_on"] == "2099-01-01"
+        assert out["last_upgrade_on"] == "2025-01-01"
+
+    def test_expired_derived_from_expireon(self):
+        assert _account_fields({"expireOn": "2017-01-28T03:17:00"})["expired"] is True
+        assert _account_fields({"expireOn": "2099-12-31T23:59:00"})["expired"] is False
+
+    def test_missing_or_bad_expireon_keeps_expired_none(self):
+        assert _account_fields({})["expired"] is None
+        assert _account_fields({"expireOn": ""})["expired"] is None
+        assert _account_fields({"expireOn": "not-a-date"})["expired"] is None
