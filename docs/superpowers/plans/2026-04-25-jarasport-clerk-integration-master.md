@@ -6,7 +6,8 @@ owner: jara-r-k
 date: 2026-04-25
 project: trainingpeaks-mcp
 phases: CLK-0 to CLK-6
-actionable: auto
+actionable: blocked
+blocked_reason: "PAUSED by owner 2026-08-27 (P2–P4 on hold); see wiki entities/jarasport-tp-mcp"
 next_action: Start CLK-0 Task 1 (Clerk tenant provisioning)
 parent: jarasport-tp-mcp-master
 ---
