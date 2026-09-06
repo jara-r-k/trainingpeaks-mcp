@@ -7,7 +7,8 @@ date: 2026-04-25
 project: trainingpeaks-mcp
 parent: jarasport-tp-mcp-master
 phase: P0
-actionable: auto
+actionable: blocked
+blocked_reason: "PAUSED by owner 2026-08-27 (P2–P4 on hold); see wiki entities/jarasport-tp-mcp"
 next_action: Task 1 — PyPI name check and repo creation
 depends_on: none
 ---
