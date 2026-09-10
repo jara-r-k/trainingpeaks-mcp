@@ -6,7 +6,8 @@ owner: jara-r-k
 date: 2026-04-25
 project: trainingpeaks-mcp
 phases: P0-P7
-actionable: auto
+actionable: blocked
+blocked_reason: "PAUSED by owner 2026-08-27 (P2–P4 on hold); see wiki entities/jarasport-tp-mcp"
 next_action: Start P0 Task 1 (PyPI name check + repo creation)
 ---
 
