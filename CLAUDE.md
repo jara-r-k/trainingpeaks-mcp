@@ -1,6 +1,6 @@
 # CLAUDE.md — trainingpeaks-mcp
 
-> **Root principles**: See ~/projects/CLAUDE.md §1–4 (Think Before Coding, Simplicity First,
+> **Root principles**: See ~/projects/AGENTS.md §1–4 (Think Before Coding, Simplicity First,
 > Surgical Changes, Goal-Driven Execution). Apply them here — especially §3: with 52 tools
 > across 34 source files, touch only the file you need.
 
@@ -102,7 +102,7 @@ fields → test with multiple sport types (bike, run, swim have different field 
    internal endpoints, the entire server breaks. Monitor for 404s on known endpoints.
 8. **Result sanitisation**: Tool results are scrubbed for auth-related keys before returning
    to Claude. Never log or return cookie/token values.
-9. **Wiki raw/ safety**: This project is part of the ~/projects/ LLM Wiki. Never write to ~/projects/raw/ — that layer is human-curated and immutable. See ~/projects/CLAUDE.md for the full wiki schema.
+9. **Wiki raw/ safety**: This project is part of the ~/projects/ LLM Wiki. Never write to ~/projects/raw/ — that layer is human-curated and immutable. See ~/projects/AGENTS.md for the full wiki schema.
 
 ## Compact Instructions
 

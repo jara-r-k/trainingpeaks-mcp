@@ -143,6 +143,15 @@ detect_test_failures() {
   # Run pytest with a 60-second timeout to avoid hangs
   test_output=$(cd "$PROJECT_DIR" && timeout 60 python3 -m pytest tests/ --tb=no -q 2>/dev/null) || test_exit=$?
 
+  if (( test_exit == 127 || test_exit == 126 )); then
+    # timeout(1) absent or not executable on this host — that is OUR breakage,
+    # not the project's. Emit a detector-health signal, never a test failure.
+    items+=("$(emit_item "tp:detector-broken" "ci" \
+      "${PROJECT}: test detector broken on this host (rc=${test_exit})" \
+      "timeout(1) missing or not executable — pytest was not run; detector breakage, not a test failure" "30")")
+    return
+  fi
+
   if (( test_exit == 124 )); then
     # Timeout
     items+=("$(emit_item "tp:test-timeout" "ci" \
