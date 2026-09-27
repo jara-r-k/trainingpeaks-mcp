@@ -290,12 +290,15 @@ async def tp_copy_plan_workout(
         # errored or returned no id may still have created the workout.
         after = await day_workouts()
         added = [w for w in (after or []) if w.get("workoutId") not in before_ids]
-        saved = next((w for w in added if new_id and w.get("workoutId") == new_id), None) or next(
-            (w for w in added if (w.get("title") or "").strip() == payload["title"]), None
-        )
+        if new_id:
+            # A known id is authoritative: never adopt some other same-titled card.
+            saved = next((w for w in added if w.get("workoutId") == new_id), None)
+        else:
+            saved = next((w for w in added if (w.get("title") or "").strip() == payload["title"]), None)
         if post_error and saved is None:
             # The request may have saved server-side before failing: unknown, check first.
-            return {**post_error, "created": None}
+            note = "unknown whether it was created; do NOT re-copy, check first"
+            return {**post_error, "created": None, "message": f"{post_error.get('message')} ({note})"}
         created: bool | None
         if saved is not None:
             created = True
@@ -345,6 +348,8 @@ async def tp_copy_plan_workout(
 
 
 async def tp_apply_training_plan(plan_id: int | str, start_date: str) -> dict[str, Any]:
+    # Not registered as an MCP tool in this fork (bulk, visible writes). Kept for
+    # upstream parity; guarded so a direct caller can't default to the coach's calendar.
     """Apply a plan to the athlete's calendar from ``start_date`` by copying each
     plan workout to ``start_date + relative_day`` (structure/description/TSS
     preserved); training-period annotation markers are skipped. Athlete is resolved
@@ -355,6 +360,8 @@ async def tp_apply_training_plan(plan_id: int | str, start_date: str) -> dict[st
     except (ValidationError, ValueError) as e:
         return _err("VALIDATION_ERROR",
                     format_validation_error(e) if isinstance(e, ValidationError) else str(e))
+    if not athlete_override.get():
+        return _err("VALIDATION_ERROR", "Pass athlete=<id>: plans are only applied to a named athlete.")
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:

@@ -112,7 +112,7 @@ async def test_get_workouts_lays_out_by_week_day():
 
 
 @pytest.mark.asyncio
-async def test_apply_copies_workouts_skips_period_markers():
+async def test_apply_copies_workouts_skips_period_markers(as_athlete):
     """Synthetic apply: each plan workout is recreated at start_date + relative
     day (structure preserved as a JSON string); type-100 period markers skipped."""
     post = APIResponse(success=True, data={"workoutId": 999})
@@ -279,3 +279,45 @@ async def test_plan_workouts_week_filter_exposes_ids():
     assert r["week"] == 2 and r["count"] == 1
     card = r["workouts"][0]
     assert card["id"] == 13 and card["weekday"] == "Tue" and card["order_on_day"] == 1
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_failed_snapshot_creates_nothing(as_athlete):
+    def route(ep, **k):
+        if ep.startswith("/plans/v1/plans/") and "/workouts/" in ep:
+            return APIResponse(success=True, data=_CARDS)
+        if ep.startswith("/plans/"):
+            return APIResponse(success=True, data=_DETAIL)
+        return APIResponse(success=False, message="timeout")
+    inst = _client_with(route)
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["error_code"] == "API_ERROR" and "nothing was created" in r["message"]
+    inst.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_known_id_never_adopts_another_same_title_card(as_athlete):
+    # TP says 999 was created; 999 isn't visible yet but a same-titled 1000 appeared.
+    after = [{"workoutId": 1000, "title": "CY NFR 60M", "isHidden": True}]
+    inst = _client_with(_card_router([], after), post=APIResponse(success=True, data={"workoutId": 999}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and r["verified"] is False and r["workout_id"] == 999
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_post_error_unknown_says_do_not_recopy(as_athlete):
+    inst = _client_with(_card_router([], [], fail_reads=True), post=APIResponse(success=False, message="timeout"))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and "do NOT re-copy" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_apply_refuses_without_athlete():
+    inst = _client_with(_get_router)
+    p = _patch(inst)
+    try:
+        r = await tp_apply_training_plan(163992, "2026-01-05")
+    finally:
+        p.stop()
+    assert r["error_code"] == "VALIDATION_ERROR"
+    inst.post.assert_not_called()

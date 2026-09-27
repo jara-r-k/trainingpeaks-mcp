@@ -587,8 +587,9 @@ TOOLS = [
         name="tp_copy_plan_workout",
         description="Copy ONE training-plan workout (a single card, by id from "
                     "tp_get_training_plan_workouts) onto the athlete's calendar on a date. "
-                    "Hidden from the athlete by default. Re-reads the day and returns "
-                    "verified=true only if it persisted. Does not retry.",
+                    "Hidden from the athlete by default. REQUIRES athlete (never copies to "
+                    "your own calendar). Re-reads the day and returns created/verified. "
+                    "Does not retry; never re-copy when created is true or null.",
         inputSchema={
             "type": "object",
             "properties": {

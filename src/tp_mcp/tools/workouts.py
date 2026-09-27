@@ -150,8 +150,14 @@ SPORT_NAME_BY_ID: dict[int, str] = {value_id: name for name, (_, value_id) in SP
 
 
 def sport_name(family: Any, value_id: Any) -> Any:
-    """Readable sport: the family field if present, else the name for the type ID."""
-    return family or SPORT_NAME_BY_ID.get(value_id, value_id)
+    """Readable sport name. Integer ids (family or value) map through SPORT_NAME_BY_ID;
+    an unknown id is returned as-is."""
+    for raw in (family, value_id):
+        if isinstance(raw, int):
+            return SPORT_NAME_BY_ID.get(raw, raw)
+        if raw:
+            return raw
+    return None
 
 
 def _format_workout_day(value: date_type | datetime_type) -> str:

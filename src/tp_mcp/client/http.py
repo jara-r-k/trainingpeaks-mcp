@@ -15,8 +15,6 @@ from tp_mcp.sanitiser import sanitise_result
 
 logger = logging.getLogger("tp-mcp")
 
-logger = logging.getLogger("tp-mcp")
-
 TP_API_BASE = "https://tpapi.trainingpeaks.com"
 DEFAULT_TIMEOUT = 30.0
 MIN_REQUEST_INTERVAL = 0.15  # 150ms between requests to avoid rate limiting
@@ -369,7 +367,7 @@ class TPClient:
                 error_code=ErrorCode.FORBIDDEN_ENDPOINT,
                 message=(f"Endpoint {endpoint} is disabled in this connector "
                          "(destructive plan operation — has emptied a published plan). "
-                         "Use the synthetic tp_apply_training_plan instead."),
+                         "Copy plan cards one at a time with tp_copy_plan_workout instead."),
             )
 
         await self._ensure_client()
