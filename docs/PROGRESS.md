@@ -4,7 +4,7 @@
 MVP - Complete & Production Ready
 
 ## Last Updated
-2026-04-04
+2026-09-27
 
 ## Completed Tasks
 
@@ -56,6 +56,44 @@ MVP - Complete & Production Ready
 - [x] TOOL-12 - tp_unpair_workout (split paired workout into completed + planned via split endpoint)
 - [ ] TOOL-09 - tp_move_workout
 - [ ] TOOL-10 - tp_get_health_metrics (sleep, resting HR, HRV, weight)
+
+## Backlog (open defects)
+
+Found while mining a coach's session notes and comments for the Head Coach week-copy work
+(Jarasport `trainingpeaks/`). Both were reproduced read-only on 2026-09-27 against a coached
+athlete's week (coach account, `athlete` target set).
+
+- [ ] **FIX-01 `tp_get_workout_comments` returns HTTP 405.** `GET` on the comments endpoint used
+  by `tools/workouts.py` is rejected with 405 Method Not Allowed for a normal planned workout.
+  The endpoint or verb has likely changed. Capture the TrainingPeaks web app's current request
+  for a workout's comment thread and update the tool. Needed for coach-voice / comment extraction.
+- [ ] **FIX-02 `tp_get_notes` returns NOT_FOUND for a week that has calendar note cards.** The
+  week 2026-09-28 to 2026-10-04 visibly holds note/REST cards (they come back from
+  `tp_get_workouts` as Crosstrain/DayOff/Other items), yet `tp_get_notes` returns
+  `NOT_FOUND`. The notes endpoint (or its athlete scoping in coach mode) needs re-checking.
+  Needed so REST/sick/holiday/procedure marker cards can be read as notes rather than inferred
+  from workout types.
+
+Post-merge review of #12 and #13 (independent reviewer, 2026-09-27). The suite passes locally on
+merged `main` (577 passed, `ruff check src/` clean). No correctness defect found in the plan-copy
+path. Logged here, not fixed:
+
+- [ ] **FIX-03 Fork CI never runs.** Actions is enabled and `ci.yml` triggers on `pull_request`
+  and `push` to `main`, but no CI run exists for #12, #13, #14 or their merges to `main` (only
+  Dependabot and dependency-graph runs). Every merge so far was reviewed and tested locally
+  instead. Find out why the workflow isn't firing (fork workflow enablement, or the file on
+  `main` isn't the one GitHub sees) and get a green run on `main`.
+- [ ] **FIX-04 `tp_copy_plan_workout` is exposed on every connected session.** It's registered
+  in `server.py` unconditionally, so any Claude session with this MCP can call it. It has not been
+  run against a live calendar yet (unit-tested only; Jarasport's hide-probe row is NOT DONE), and
+  the only thing stopping live use before that probe is the Head Coach skill's procedural gate.
+  The tool's own guards hold (named athlete required, hidden by default, snapshot/diff stick
+  check, no retry, native `applyplan` hard-blocked in `http.py`). Decide whether to put it behind
+  an opt-in env flag until the hide probe passes.
+- [ ] **FIX-05 `tp_create_workout` now always sends `isHidden: false`.** Before #13 the field was
+  omitted when not given; now every create sends an explicit `false`. Probably harmless, but it
+  changes the payload for all callers. Send it only when `is_hidden` is set, to match
+  `tp_copy_workout`.
 
 ## Recent Changes (2026-04-04)
 
