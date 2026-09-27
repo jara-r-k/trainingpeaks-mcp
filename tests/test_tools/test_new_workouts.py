@@ -916,21 +916,6 @@ class TestWorkoutComments:
         assert result == {"comments": [], "count": 0, "message": "No comments on this workout."}
 
     @pytest.mark.asyncio
-    async def test_get_comments_empty(self):
-        response = APIResponse(success=True, data=[])
-
-        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
-            mock_instance.get = AsyncMock(return_value=response)
-            mock_client.return_value.__aenter__.return_value = mock_instance
-
-            result = await tp_get_workout_comments("1001")
-
-        assert result["count"] == 0
-        assert "No comments" in result.get("message", "")
-
-    @pytest.mark.asyncio
     async def test_add_comment_success(self):
         response = APIResponse(success=True, data=None)
 

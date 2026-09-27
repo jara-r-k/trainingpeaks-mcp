@@ -1031,7 +1031,7 @@ async def tp_get_workout_comments(workout_id: str) -> dict[str, Any]:
                 "created_at": c.get("dateCreated"),
                 "commenter_id": c.get("commenterPersonId"),
                 "commenter": names.get(c.get("commenterPersonId")),
-                "is_athlete": c.get("commenterPersonId") == athlete_id,
+                "is_athlete": str(c.get("commenterPersonId")) == str(athlete_id),
             }
             for c in data.get("comments") or []
         ]
