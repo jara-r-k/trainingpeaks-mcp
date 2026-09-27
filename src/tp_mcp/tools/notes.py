@@ -301,15 +301,16 @@ async def tp_update_note(
         }
 
 
-async def tp_get_notes(start_date: str, end_date: str) -> dict[str, Any]:
+async def tp_get_notes(start_date: str, end_date: str, include_hidden: bool = False) -> dict[str, Any]:
     """List calendar notes in a date range.
 
     Args:
         start_date: Start date (YYYY-MM-DD).
         end_date: End date (YYYY-MM-DD). Max 730 days span (±1 year typical).
+        include_hidden: Also return notes hidden from the athlete (a coach's own notes).
 
     Returns:
-        Dict with notes list (hidden notes filtered out), count, and date range.
+        Dict with notes list, count, hidden_count (hidden notes in range) and date range.
     """
     try:
         start = dt_date.fromisoformat(start_date)
@@ -344,8 +345,9 @@ async def tp_get_notes(start_date: str, end_date: str) -> dict[str, Any]:
 
         start_str = start.isoformat()
         end_str = end.isoformat()
+        # Singular "calendarNote" for the range read too; the plural path is a 404.
         endpoint = (
-            f"/fitness/v1/athletes/{athlete_id}/calendarNotes/{start_str}/{end_str}"
+            f"/fitness/v1/athletes/{athlete_id}/calendarNote/{start_str}/{end_str}"
         )
         response = await client.get(endpoint)
 
@@ -362,8 +364,9 @@ async def tp_get_notes(start_date: str, end_date: str) -> dict[str, Any]:
             response.data if isinstance(response.data, list) else []
         )
         notes: list[dict[str, Any]] = []
+        hidden_count = sum(1 for n in raw_notes if n.get("isHidden"))
         for n in raw_notes:
-            if n.get("isHidden"):
+            if n.get("isHidden") and not include_hidden:
                 continue
             note_date_str = n.get("noteDate", "")
             if note_date_str and "T" in note_date_str:
@@ -382,6 +385,7 @@ async def tp_get_notes(start_date: str, end_date: str) -> dict[str, Any]:
         return {
             "notes": notes,
             "count": len(notes),
+            "hidden_count": hidden_count,
             "date_range": {"start": start_date, "end": end_date},
         }
 

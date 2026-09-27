@@ -1010,7 +1010,9 @@ async def tp_get_workout_comments(workout_id: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
-        endpoint = f"/fitness/v2/athletes/{athlete_id}/workouts/{validated.workout_id}/comments"
+        # Reads use v3; the v2 path only accepts writes (GET there is HTTP 405).
+        # v3 returns {"comments": [...], "people": [{"id", "name"}]}.
+        endpoint = f"/fitness/v3/athletes/{athlete_id}/workouts/{validated.workout_id}/comments"
         response = await client.get(endpoint)
 
         if response.is_error:
@@ -1020,18 +1022,22 @@ async def tp_get_workout_comments(workout_id: str) -> dict[str, Any]:
                 "message": response.message,
             }
 
-        if not response.data:
-            return {
-                "comments": [],
-                "count": 0,
-                "message": "No comments on this workout.",
+        data = response.data if isinstance(response.data, dict) else {}
+        names = {p.get("id"): p.get("name") for p in data.get("people") or []}
+        comments = [
+            {
+                "id": c.get("id"),
+                "comment": c.get("comment"),
+                "created_at": c.get("dateCreated"),
+                "commenter_id": c.get("commenterPersonId"),
+                "commenter": names.get(c.get("commenterPersonId")),
+                "is_athlete": str(c.get("commenterPersonId")) == str(athlete_id),
             }
-
-        comments = response.data if isinstance(response.data, list) else []
-        return {
-            "comments": comments,
-            "count": len(comments),
-        }
+            for c in data.get("comments") or []
+        ]
+        if not comments:
+            return {"comments": [], "count": 0, "message": "No comments on this workout."}
+        return {"comments": comments, "count": len(comments)}
 
 
 async def tp_add_workout_comment(workout_id: str, comment: str) -> dict[str, Any]:

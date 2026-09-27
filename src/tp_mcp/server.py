@@ -885,12 +885,18 @@ TOOLS = [
     ),
     Tool(
         name="tp_get_notes",
-        description="List calendar notes in a date range (hidden notes filtered).",
+        description="List calendar notes in a date range. Hidden notes are left out unless "
+                    "include_hidden is true; hidden_count says how many there were.",
         inputSchema={
             "type": "object",
             "properties": {
                 "start_date": {"type": "string", "description": "YYYY-MM-DD"},
                 "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "include_hidden": {
+                    "type": "boolean",
+                    "description": "Also return notes hidden from the athlete (coach notes)",
+                    "default": False,
+                },
             },
             "required": ["start_date", "end_date"],
         },
@@ -1524,7 +1530,11 @@ async def _h_get_note(args):
 
 @_handler("tp_get_notes")
 async def _h_get_notes(args):
-    return await tp_get_notes(start_date=args["start_date"], end_date=args["end_date"])
+    return await tp_get_notes(
+        start_date=args["start_date"],
+        end_date=args["end_date"],
+        include_hidden=args.get("include_hidden", False),
+    )
 
 
 @_handler("tp_update_note")
