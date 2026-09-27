@@ -20,7 +20,6 @@ from tp_mcp.tools import (
     tp_add_note_comment,
     tp_add_workout_comment,
     tp_analyze_workout,
-    tp_apply_training_plan,
     tp_auth_status,
     tp_copy_plan_workout,
     tp_copy_workout,
@@ -601,21 +600,9 @@ TOOLS = [
             "required": ["plan_id", "plan_workout_id", "target_date"],
         },
     ),
-    Tool(
-        name="tp_apply_training_plan",
-        description="Apply a training plan to an athlete's calendar from a start date "
-                    "by copying each plan workout (with structure) to start_date + its "
-                    "relative day. Targets the athlete given via the athlete parameter.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "plan_id": {"type": "integer", "description": "Plan id"},
-                "start_date": {"type": "string", "description": "Calendar date for plan day 1 (YYYY-MM-DD)"},
-                "athlete": {"type": "string", "description": "Target athlete name or ID (coach accounts)"},
-            },
-            "required": ["plan_id", "start_date"],
-        },
-    ),
+    # tp_apply_training_plan is deliberately NOT registered in this fork: it bulk-writes
+    # a whole plan as visible workouts. Coaching copies go one card at a time through
+    # tp_copy_plan_workout (hidden, verified). The function stays for upstream parity.
     # --- Athlete Settings ---
     Tool(
         name="tp_get_athlete_settings",
@@ -1353,9 +1340,6 @@ async def _h_copy_plan_workout(args):
         is_hidden=args.get("is_hidden", True),
     )
 
-@_handler("tp_apply_training_plan")
-async def _h_apply_training_plan(args):
-    return await tp_apply_training_plan(plan_id=args["plan_id"], start_date=args["start_date"])
 
 # --- Athlete Settings ---
 @_handler("tp_get_athlete_settings")

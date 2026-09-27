@@ -246,6 +246,7 @@ async def tp_get_workouts(
                     "type": w.workout_status,
                     "sport": sport_name(w.sport, w.workout_type),
                     "is_hidden": w.is_hidden,
+                    "order_on_day": w.order_on_day,
                     "duration_planned": w.duration_planned,
                     "duration_actual": w.duration_actual,
                     "distance_planned_km": w.distance_planned / 1000 if w.distance_planned else None,

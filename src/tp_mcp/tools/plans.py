@@ -24,6 +24,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from tp_mcp.client import TPClient
+from tp_mcp.client.context import athlete_override
 from tp_mcp.tools._validation import format_validation_error
 
 logger = logging.getLogger("tp-mcp")
@@ -237,9 +238,12 @@ async def tp_copy_plan_workout(
     """Copy ONE plan workout (a single card) onto the athlete's calendar on ``target_date``.
 
     The MCP equivalent of the Dual Calendar Copy -> Paste. Hidden from the athlete by
-    default. After creating, re-reads the athlete's day and reports ``verified`` only
-    if the new workout is there with the requested visibility. Never retries: the
-    caller decides whether to try again. Never writes to the plan itself.
+    default. Requires an explicit athlete target (never falls back to the caller's own
+    calendar). Snapshots the day's workouts before creating and diffs them after, so
+    ``created`` (a new workout exists) is reported separately from ``verified`` (it is
+    there with the requested visibility). Never retries: the caller decides whether
+    to try again, and must not re-copy when ``created`` is true. Never writes to the
+    plan itself.
     """
     try:
         v = _CopyPlanWorkoutInput(
@@ -248,6 +252,8 @@ async def tp_copy_plan_workout(
     except (ValidationError, ValueError) as e:
         return _err("VALIDATION_ERROR",
                     format_validation_error(e) if isinstance(e, ValidationError) else str(e))
+    if not athlete_override.get():
+        return _err("VALIDATION_ERROR", "Pass athlete=<id>: plan cards are only copied to a named athlete.")
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
@@ -262,33 +268,54 @@ async def tp_copy_plan_workout(
         if source.get("workoutTypeValueId") == _PERIOD_TYPE_ID:
             return _err("VALIDATION_ERROR", "That card is a training-period annotation, not a session.")
 
+        day = v.target_date.isoformat()
+        day_endpoint = f"/fitness/v6/athletes/{athlete_id}/workouts/{day}/{day}"
+
+        async def day_workouts() -> list[dict[str, Any]] | None:
+            r = await client.get(day_endpoint, cache=False)
+            return r.data if not r.is_error and isinstance(r.data, list) else None
+
+        before = await day_workouts()
+        if before is None:
+            return _err("API_ERROR", "Could not read the target day before copying; nothing was created.")
+        before_ids = {w.get("workoutId") for w in before}
+
         payload = _plan_workout_payload(source, athlete_id, v.target_date)
         payload["isHidden"] = is_hidden
         resp = await client.post(f"/fitness/v6/athletes/{athlete_id}/workouts", json=payload)
-        if resp.is_error:
-            return _api_err(resp)
+        post_error = _api_err(resp) if resp.is_error else None
         new_id = resp.data.get("workoutId") if isinstance(resp.data, dict) else None
 
-        # Stick check: re-read the day uncached and look for the new workout.
-        day = v.target_date.isoformat()
-        check = await client.get(f"/fitness/v6/athletes/{athlete_id}/workouts/{day}/{day}", cache=False)
-        saved = next(
-            (w for w in (check.data if isinstance(check.data, list) else []) if w.get("workoutId") == new_id),
-            None,
+        # Stick check: uncached re-read, diffed against the snapshot. A POST that
+        # errored or returned no id may still have created the workout.
+        after = await day_workouts()
+        added = [w for w in (after or []) if w.get("workoutId") not in before_ids]
+        saved = next((w for w in added if new_id and w.get("workoutId") == new_id), None) or next(
+            (w for w in added if (w.get("title") or "").strip() == payload["title"]), None
         )
+        if post_error and saved is None:
+            return {**post_error, "created": False if after is not None else None}
+        created: bool | None = saved is not None if after is not None else None
         verified = saved is not None and bool(saved.get("isHidden")) == is_hidden
         result: dict[str, Any] = {
             "success": verified,
+            "created": created,
             "verified": verified,
-            "workout_id": new_id,
+            "workout_id": saved.get("workoutId") if saved else new_id,
             "athlete_id": athlete_id,
             "date": day,
             "title": payload["title"],
             "is_hidden": saved.get("isHidden") if saved else None,
             "copied_from": {"plan_id": v.plan_id, "plan_workout_id": v.plan_workout_id},
         }
-        if not verified:
-            result["message"] = "Created but not confirmed on the calendar with the requested visibility."
+        if created is None:
+            result["message"] = (
+                "Could not re-read the day: unknown whether it was created. Do NOT re-copy; check first."
+            )
+        elif not created:
+            result["message"] = "Not found on the calendar after copying."
+        elif not verified:
+            result["message"] = "Created, but not with the requested visibility. Fix visibility; do NOT re-copy."
         return result
 
 

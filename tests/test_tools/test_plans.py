@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tp_mcp.client.context import athlete_override
 from tp_mcp.client.http import APIResponse
 from tp_mcp.tools.plans import (
     tp_apply_training_plan,
@@ -151,64 +152,107 @@ _CARDS = [
 ]
 
 
-def _card_router(saved_day=None):
+def _card_router(before=(), after=(), fail_reads=False):
+    """Plan reads, then the target day: ``before`` on the first read, ``after`` on the next."""
+    reads = {"n": 0}
+
     def route(ep, **k):
         if ep.startswith("/plans/v1/plans/") and "/workouts/" in ep:
             return APIResponse(success=True, data=_CARDS)
         if ep.startswith("/plans/"):
             return APIResponse(success=True, data=_DETAIL)
-        return APIResponse(success=True, data=saved_day if saved_day is not None else [])
+        reads["n"] += 1
+        if fail_reads and reads["n"] > 1:
+            return APIResponse(success=False, message="timeout")
+        return APIResponse(success=True, data=list(before if reads["n"] == 1 else after))
+
     return route
 
 
-@pytest.mark.asyncio
-async def test_copy_plan_workout_hidden_by_default_and_verified():
-    post = APIResponse(success=True, data={"workoutId": 999})
-    inst = _client_with(_card_router([{"workoutId": 999, "isHidden": True}]), post=post)
+@pytest.fixture
+def as_athlete():
+    token = athlete_override.set("1472902")
+    yield
+    athlete_override.reset(token)
+
+
+async def _copy(inst, *args, **kwargs):
     p = _patch(inst)
     try:
-        r = await tp_copy_plan_workout(163992, 12, "2026-10-07")
+        return await tp_copy_plan_workout(*args, **kwargs)
     finally:
         p.stop()
-    assert r["success"] is True and r["verified"] is True and r["workout_id"] == 999
+
+
+EXISTING = {"workoutId": 5, "title": "REST", "isHidden": None}
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_hidden_by_default_and_verified(as_athlete):
+    after = [EXISTING, {"workoutId": 999, "title": "CY NFR 60M", "isHidden": True}]
+    inst = _client_with(_card_router([EXISTING], after), post=APIResponse(success=True, data={"workoutId": 999}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["success"] is True and r["created"] is True and r["verified"] is True and r["workout_id"] == 999
     payload = inst.post.call_args.kwargs["json"]
     assert payload["isHidden"] is True
     assert payload["workoutDay"] == "2026-10-07T00:00:00"
     assert payload["title"] == "CY NFR 60M" and payload["workoutSubTypeId"] == 6
     assert payload["coachComments"] == "spin" and payload["structure"] == '{"structure": [{"x": 1}]}'
-    # Stick check re-reads the target day without the cache.
-    assert inst.get.call_args_list[-1].kwargs.get("cache") is False
-    assert inst.get.call_args_list[-1].args[0].endswith("/workouts/2026-10-07/2026-10-07")
+    day_reads = [c for c in inst.get.call_args_list if c.args[0].endswith("/workouts/2026-10-07/2026-10-07")]
+    assert len(day_reads) == 2 and all(c.kwargs.get("cache") is False for c in day_reads)
 
 
 @pytest.mark.asyncio
-async def test_copy_plan_workout_not_verified_when_missing_or_visible():
-    for saved in ([], [{"workoutId": 999, "isHidden": False}]):
-        inst = _client_with(_card_router(saved), post=APIResponse(success=True, data={"workoutId": 999}))
-        p = _patch(inst)
-        try:
-            r = await tp_copy_plan_workout(163992, 12, "2026-10-07")
-        finally:
-            p.stop()
-        assert r["success"] is False and r["verified"] is False and "not confirmed" in r["message"]
+async def test_copy_plan_workout_refuses_without_athlete():
+    inst = _client_with(_card_router())
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["error_code"] == "VALIDATION_ERROR" and "athlete" in r["message"]
+    inst.post.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_copy_plan_workout_rejects_unknown_and_period_cards():
+async def test_copy_plan_workout_created_but_visible_is_not_verified(as_athlete):
+    after = [{"workoutId": 999, "title": "CY NFR 60M", "isHidden": False}]
+    inst = _client_with(_card_router([], after), post=APIResponse(success=True, data={"workoutId": 999}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is True and r["verified"] is False and "do NOT re-copy" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_missing_after_post(as_athlete):
+    inst = _client_with(_card_router([], []), post=APIResponse(success=True, data={"workoutId": 999}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is False and r["verified"] is False
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_post_error_but_created_is_reported_created(as_athlete):
+    # e.g. a timeout after the server saved it: no id in the response, but the diff finds it.
+    after = [{"workoutId": 1000, "title": "CY NFR 60M", "isHidden": True}]
+    inst = _client_with(_card_router([], after), post=APIResponse(success=False, message="timeout"))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is True and r["verified"] is True and r["workout_id"] == 1000
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_unreadable_after_is_unknown_not_missing(as_athlete):
+    inst = _client_with(_card_router([], [], fail_reads=True), post=APIResponse(success=True, data={"workoutId": 9}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and "Do NOT re-copy" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_rejects_unknown_and_period_cards(as_athlete):
     for wid, code in ((404, "NOT_FOUND"), (11, "VALIDATION_ERROR")):
         inst = _client_with(_card_router())
-        p = _patch(inst)
-        try:
-            r = await tp_copy_plan_workout(163992, wid, "2026-10-07")
-        finally:
-            p.stop()
+        r = await _copy(inst, 163992, wid, "2026-10-07")
         assert r["isError"] is True and r["error_code"] == code
         inst.post.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_copy_plan_workout_validates_date():
-    r = await tp_copy_plan_workout(163992, 12, "not-a-date")
+    r = await tp_copy_plan_workout(163992, 12, "not-a-date")  # validated before the athlete check
     assert r["error_code"] == "VALIDATION_ERROR"
 
 

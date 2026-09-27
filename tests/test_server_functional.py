@@ -104,10 +104,11 @@ class TestListTools:
             "tp_list_training_plans",
             "tp_get_training_plan",
             "tp_get_training_plan_workouts",
-            "tp_apply_training_plan",
             "tp_copy_plan_workout",
         }
         assert v2_tools.issubset(names)
+        # Bulk plan apply writes visible workouts; it must not be exposed.
+        assert "tp_apply_training_plan" not in names
         assert len(names) == len(core_tools) + len(v2_tools)
 
     @pytest.mark.asyncio

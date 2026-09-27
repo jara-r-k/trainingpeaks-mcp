@@ -58,6 +58,7 @@ class WorkoutSummary(BaseModel):
     distance_actual: float | None = Field(default=None, alias="distance")
     completed: bool | None = Field(default=None)
     is_hidden: bool | None = Field(default=None, alias="isHidden")
+    order_on_day: int | None = Field(default=None, alias="orderOnDay")
     description: str | None = None
 
     @property
