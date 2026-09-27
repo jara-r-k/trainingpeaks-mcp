@@ -46,6 +46,7 @@ from tp_mcp.tools.notes import (
 from tp_mcp.tools.peaks import tp_get_peaks, tp_get_workout_prs
 from tp_mcp.tools.plans import (
     tp_apply_training_plan,
+    tp_copy_plan_workout,
     tp_get_training_plan,
     tp_get_training_plan_workouts,
     tp_list_training_plans,
@@ -109,6 +110,7 @@ __all__ = [
     "tp_get_training_plan",
     "tp_get_training_plan_workouts",
     "tp_apply_training_plan",
+    "tp_copy_plan_workout",
     "tp_get_availability",
     "tp_get_equipment",
     "tp_get_events",

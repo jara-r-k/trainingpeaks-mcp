@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tp_mcp.client.http import APIResponse, ErrorCode
-from tp_mcp.tools.workouts import tp_create_workout, tp_get_workout, tp_get_workouts, tp_pair_workout, tp_unpair_workout
+from tp_mcp.tools.workouts import (
+    tp_copy_workout,
+    tp_create_workout,
+    tp_get_workout,
+    tp_get_workouts,
+    tp_pair_workout,
+    tp_unpair_workout,
+)
 
 
 class TestTpGetWorkouts:
@@ -132,6 +139,33 @@ class TestTpGetWorkouts:
             result = await tp_get_workouts("2025-01-01", "2025-04-01")
 
         assert "isError" not in result or not result.get("isError")
+
+
+class TestHiddenFlag:
+    @pytest.mark.asyncio
+    async def test_get_workouts_exposes_is_hidden(self):
+        raw = [{"workoutId": 1, "workoutDay": "2026-10-06", "title": "E3", "workoutTypeValueId": 3, "isHidden": True}]
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=raw))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+            result = await tp_get_workouts("2026-10-06", "2026-10-06")
+        assert result["workouts"][0]["is_hidden"] is True
+
+    @pytest.mark.asyncio
+    async def test_copy_workout_passes_is_hidden(self):
+        source = {"workoutId": 5, "workoutDay": "2026-09-29", "title": "Gym", "workoutTypeValueId": 9,
+                  "workoutTypeFamilyId": 9}
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=source))
+            mock_instance.post = AsyncMock(return_value=APIResponse(success=True, data={"workoutId": 6}))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+            result = await tp_copy_workout("5", "2026-10-06", is_hidden=True)
+        assert result["success"] is True
+        assert mock_instance.post.call_args.kwargs["json"]["isHidden"] is True
 
 
 class TestTpGetWorkout:

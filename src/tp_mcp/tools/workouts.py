@@ -245,6 +245,7 @@ async def tp_get_workouts(
                     "title": w.title,
                     "type": w.workout_status,
                     "sport": sport_name(w.sport, w.workout_type),
+                    "is_hidden": w.is_hidden,
                     "duration_planned": w.duration_planned,
                     "duration_actual": w.duration_actual,
                     "distance_planned_km": w.distance_planned / 1000 if w.distance_planned else None,
@@ -777,6 +778,7 @@ async def tp_copy_workout(
     workout_id: str,
     target_date: str,
     title: str | None = None,
+    is_hidden: bool | None = None,
 ) -> dict[str, Any]:
     """Copy an existing workout to a new date.
 
@@ -787,6 +789,7 @@ async def tp_copy_workout(
         workout_id: The source workout ID.
         target_date: Target date in ISO format (YYYY-MM-DD).
         title: Optional title override.
+        is_hidden: Hide the copy from the athlete (coach accounts). None keeps TP's default.
 
     Returns:
         Dict with new workout details or error.
@@ -861,6 +864,9 @@ async def tp_copy_workout(
         ]:
             if source.get(field) is not None:
                 payload[field] = source[field]
+
+        if is_hidden is not None:
+            payload["isHidden"] = is_hidden
 
         # Copy user tags (API uses userTags, not tags)
         if source.get("userTags") is not None:

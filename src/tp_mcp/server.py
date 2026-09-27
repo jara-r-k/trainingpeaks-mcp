@@ -22,6 +22,7 @@ from tp_mcp.tools import (
     tp_analyze_workout,
     tp_apply_training_plan,
     tp_auth_status,
+    tp_copy_plan_workout,
     tp_copy_workout,
     tp_create_availability,
     tp_create_equipment,
@@ -314,6 +315,7 @@ TOOLS = [
                 "workout_id": {"type": "string", "description": "Source workout ID"},
                 "target_date": {"type": "string", "description": "YYYY-MM-DD"},
                 "title": {"type": "string", "description": "Optional title override"},
+                "is_hidden": {"type": "boolean", "description": "Hide the copy from the athlete (coach accounts)"},
             },
             "required": ["workout_id", "target_date"],
         },
@@ -577,8 +579,26 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "plan_id": {"type": "integer", "description": "Plan id"},
+                "week": {"type": "integer", "description": "Optional: only this plan week (1-based)"},
             },
             "required": ["plan_id"],
+        },
+    ),
+    Tool(
+        name="tp_copy_plan_workout",
+        description="Copy ONE training-plan workout (a single card, by id from "
+                    "tp_get_training_plan_workouts) onto the athlete's calendar on a date. "
+                    "Hidden from the athlete by default. Re-reads the day and returns "
+                    "verified=true only if it persisted. Does not retry.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Plan id"},
+                "plan_workout_id": {"type": "integer", "description": "Plan workout id (the card)"},
+                "target_date": {"type": "string", "description": "Athlete calendar date (YYYY-MM-DD)"},
+                "is_hidden": {"type": "boolean", "description": "Hide from athlete (default true)", "default": True},
+            },
+            "required": ["plan_id", "plan_workout_id", "target_date"],
         },
     ),
     Tool(
@@ -1209,6 +1229,7 @@ async def _h_copy_workout(args):
         workout_id=args["workout_id"],
         target_date=args["target_date"],
         title=args.get("title"),
+        is_hidden=args.get("is_hidden"),
     )
 
 
@@ -1319,7 +1340,18 @@ async def _h_list_training_plans(args): return await tp_list_training_plans()
 async def _h_get_training_plan(args): return await tp_get_training_plan(plan_id=args["plan_id"])
 
 @_handler("tp_get_training_plan_workouts")
-async def _h_get_training_plan_workouts(args): return await tp_get_training_plan_workouts(plan_id=args["plan_id"])
+async def _h_get_training_plan_workouts(args):
+    return await tp_get_training_plan_workouts(plan_id=args["plan_id"], week=args.get("week"))
+
+
+@_handler("tp_copy_plan_workout")
+async def _h_copy_plan_workout(args):
+    return await tp_copy_plan_workout(
+        plan_id=args["plan_id"],
+        plan_workout_id=args["plan_workout_id"],
+        target_date=args["target_date"],
+        is_hidden=args.get("is_hidden", True),
+    )
 
 @_handler("tp_apply_training_plan")
 async def _h_apply_training_plan(args):

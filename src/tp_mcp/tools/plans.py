@@ -156,10 +156,11 @@ async def _fetch_plan_workouts(
     return sd, (wr.data or [])
 
 
-async def tp_get_training_plan_workouts(plan_id: int | str) -> dict[str, Any]:
+async def tp_get_training_plan_workouts(plan_id: int | str, week: int | None = None) -> dict[str, Any]:
     """All workouts of a plan, laid out by week/day (slim — title/description/
     duration/TSS/has_structure; full structure is omitted to keep the payload
-    small, but is used internally by tp_apply_training_plan)."""
+    small, but is used internally by tp_apply_training_plan). ``week`` limits
+    the result to one plan week (1-based)."""
     try:
         v = _PlanIdInput(plan_id=plan_id)  # type: ignore[arg-type]
     except (ValidationError, ValueError) as e:
@@ -176,9 +177,15 @@ async def tp_get_training_plan_workouts(plan_id: int | str) -> dict[str, Any]:
                 rel = (date_type.fromisoformat(wd) - sd).days + 1 if wd else None
             except ValueError:
                 rel = None
+            wk = ((rel - 1) // 7 + 1) if rel else None
+            if week is not None and wk != week:
+                continue
             out.append({
-                "week": ((rel - 1) // 7 + 1) if rel else None,
+                "id": w.get("workoutId"),
+                "week": wk,
                 "day": rel,
+                "weekday": date_type.fromisoformat(wd).strftime("%a") if rel else None,
+                "order_on_day": w.get("orderOnDay"),
                 "sport": _SPORT_BY_TYPE.get(w.get("workoutTypeValueId"), str(w.get("workoutTypeValueId"))),
                 "title": (w.get("title") or "").strip(),
                 "description": w.get("description"),
@@ -187,8 +194,102 @@ async def tp_get_training_plan_workouts(plan_id: int | str) -> dict[str, Any]:
                 "tss": w.get("tssPlanned"),
                 "has_structure": w.get("structure") is not None,
             })
-        out.sort(key=lambda x: (x["day"] or 0))
-        return {"plan_id": v.plan_id, "workouts": out, "count": len(out)}
+        out.sort(key=lambda x: (x["day"] or 0, x["order_on_day"] or 0))
+        return {"plan_id": v.plan_id, "week": week, "workouts": out, "count": len(out)}
+
+
+def _plan_workout_payload(w: dict[str, Any], athlete_id: int, day: date_type) -> dict[str, Any]:
+    """Create-endpoint payload that copies one plan workout's planned fields to ``day``."""
+    tid = w.get("workoutTypeValueId")
+    payload: dict[str, Any] = {
+        "athleteId": athlete_id,
+        "workoutDay": f"{day.isoformat()}T00:00:00",
+        "workoutTypeFamilyId": tid,   # family == value for standard sports
+        "workoutTypeValueId": tid,
+        "title": (w.get("title") or "Workout").strip(),
+    }
+    for field in ("totalTimePlanned", "distancePlanned", "tssPlanned", "ifPlanned", "workoutSubTypeId"):
+        if w.get(field) is not None:
+            payload[field] = w[field]
+    for field in ("description", "coachComments"):
+        if w.get(field):
+            payload[field] = w[field]
+    st = w.get("structure")
+    if isinstance(st, dict):
+        payload["structure"] = json.dumps(st)
+    elif isinstance(st, str) and st:
+        payload["structure"] = st
+    return payload
+
+
+class _CopyPlanWorkoutInput(BaseModel):
+    plan_id: int = Field(gt=0)
+    plan_workout_id: int = Field(gt=0)
+    target_date: date_type
+
+
+async def tp_copy_plan_workout(
+    plan_id: int | str,
+    plan_workout_id: int | str,
+    target_date: str,
+    is_hidden: bool = True,
+) -> dict[str, Any]:
+    """Copy ONE plan workout (a single card) onto the athlete's calendar on ``target_date``.
+
+    The MCP equivalent of the Dual Calendar Copy -> Paste. Hidden from the athlete by
+    default. After creating, re-reads the athlete's day and reports ``verified`` only
+    if the new workout is there with the requested visibility. Never retries: the
+    caller decides whether to try again. Never writes to the plan itself.
+    """
+    try:
+        v = _CopyPlanWorkoutInput(
+            plan_id=plan_id, plan_workout_id=plan_workout_id, target_date=target_date,  # type: ignore[arg-type]
+        )
+    except (ValidationError, ValueError) as e:
+        return _err("VALIDATION_ERROR",
+                    format_validation_error(e) if isinstance(e, ValidationError) else str(e))
+    async with TPClient() as client:
+        athlete_id = await client.ensure_athlete_id()
+        if not athlete_id:
+            return _err("AUTH_INVALID", "Could not get athlete ID. Re-authenticate.")
+
+        sd, ws = await _fetch_plan_workouts(client, v.plan_id)
+        if sd is None:
+            return ws  # error dict
+        source = next((w for w in ws if w.get("workoutId") == v.plan_workout_id), None)
+        if source is None:
+            return _err("NOT_FOUND", f"Workout {v.plan_workout_id} is not in plan {v.plan_id}.")
+        if source.get("workoutTypeValueId") == _PERIOD_TYPE_ID:
+            return _err("VALIDATION_ERROR", "That card is a training-period annotation, not a session.")
+
+        payload = _plan_workout_payload(source, athlete_id, v.target_date)
+        payload["isHidden"] = is_hidden
+        resp = await client.post(f"/fitness/v6/athletes/{athlete_id}/workouts", json=payload)
+        if resp.is_error:
+            return _api_err(resp)
+        new_id = resp.data.get("workoutId") if isinstance(resp.data, dict) else None
+
+        # Stick check: re-read the day uncached and look for the new workout.
+        day = v.target_date.isoformat()
+        check = await client.get(f"/fitness/v6/athletes/{athlete_id}/workouts/{day}/{day}", cache=False)
+        saved = next(
+            (w for w in (check.data if isinstance(check.data, list) else []) if w.get("workoutId") == new_id),
+            None,
+        )
+        verified = saved is not None and bool(saved.get("isHidden")) == is_hidden
+        result: dict[str, Any] = {
+            "success": verified,
+            "verified": verified,
+            "workout_id": new_id,
+            "athlete_id": athlete_id,
+            "date": day,
+            "title": payload["title"],
+            "is_hidden": saved.get("isHidden") if saved else None,
+            "copied_from": {"plan_id": v.plan_id, "plan_workout_id": v.plan_workout_id},
+        }
+        if not verified:
+            result["message"] = "Created but not confirmed on the calendar with the requested visibility."
+        return result
 
 
 # NB on the NATIVE apply command — fully reverse-engineered (Claude-in-Chrome HAR +
@@ -245,26 +346,7 @@ async def tp_apply_training_plan(plan_id: int | str, start_date: str) -> dict[st
                 failed += 1
                 continue
             day = v.start_date + timedelta(days=rel)
-            payload: dict[str, Any] = {
-                "athleteId": athlete_id,
-                "workoutDay": f"{day.isoformat()}T00:00:00",
-                "workoutTypeFamilyId": tid,   # family == value for standard sports
-                "workoutTypeValueId": tid,
-                "title": (w.get("title") or "Workout").strip(),
-            }
-            if w.get("totalTimePlanned") is not None:
-                payload["totalTimePlanned"] = w["totalTimePlanned"]
-            if w.get("description"):
-                payload["description"] = w["description"]
-            if w.get("distancePlanned") is not None:
-                payload["distancePlanned"] = w["distancePlanned"]
-            if w.get("tssPlanned") is not None:
-                payload["tssPlanned"] = w["tssPlanned"]
-            if w.get("ifPlanned") is not None:
-                payload["ifPlanned"] = w["ifPlanned"]
-            st = w.get("structure")
-            if isinstance(st, dict):
-                payload["structure"] = json.dumps(st)
+            payload = _plan_workout_payload(w, athlete_id, day)
 
             resp = await client.post(f"/fitness/v6/athletes/{athlete_id}/workouts", json=payload)
             if resp.is_error:

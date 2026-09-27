@@ -7,6 +7,7 @@ import pytest
 from tp_mcp.client.http import APIResponse
 from tp_mcp.tools.plans import (
     tp_apply_training_plan,
+    tp_copy_plan_workout,
     tp_get_training_plan,
     tp_get_training_plan_workouts,
     tp_list_training_plans,
@@ -136,3 +137,89 @@ async def test_apply_copies_workouts_skips_period_markers():
 async def test_invalid_plan_id_validation():
     r = await tp_get_training_plan(0)
     assert r["isError"] is True and r["error_code"] == "VALIDATION_ERROR"
+
+
+# --- single-card copy (Head Coach Copy -> Paste equivalent) -------------------
+
+_CARDS = [
+    {"workoutId": 11, "workoutDay": "2018-12-17T00:00:00", "workoutTypeValueId": 100, "title": "Period"},
+    {"workoutId": 12, "workoutDay": "2018-12-18T00:00:00", "workoutTypeValueId": 2, "title": "CY NFR 60M",
+     "totalTimePlanned": 1.0, "tssPlanned": 55.0, "workoutSubTypeId": 6, "coachComments": "spin",
+     "structure": {"structure": [{"x": 1}]}, "orderOnDay": 2},
+    {"workoutId": 13, "workoutDay": "2018-12-25T00:00:00", "workoutTypeValueId": 1, "title": "SW TPK 3p0K",
+     "distancePlanned": 3000.0, "orderOnDay": 1},
+]
+
+
+def _card_router(saved_day=None):
+    def route(ep, **k):
+        if ep.startswith("/plans/v1/plans/") and "/workouts/" in ep:
+            return APIResponse(success=True, data=_CARDS)
+        if ep.startswith("/plans/"):
+            return APIResponse(success=True, data=_DETAIL)
+        return APIResponse(success=True, data=saved_day if saved_day is not None else [])
+    return route
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_hidden_by_default_and_verified():
+    post = APIResponse(success=True, data={"workoutId": 999})
+    inst = _client_with(_card_router([{"workoutId": 999, "isHidden": True}]), post=post)
+    p = _patch(inst)
+    try:
+        r = await tp_copy_plan_workout(163992, 12, "2026-10-07")
+    finally:
+        p.stop()
+    assert r["success"] is True and r["verified"] is True and r["workout_id"] == 999
+    payload = inst.post.call_args.kwargs["json"]
+    assert payload["isHidden"] is True
+    assert payload["workoutDay"] == "2026-10-07T00:00:00"
+    assert payload["title"] == "CY NFR 60M" and payload["workoutSubTypeId"] == 6
+    assert payload["coachComments"] == "spin" and payload["structure"] == '{"structure": [{"x": 1}]}'
+    # Stick check re-reads the target day without the cache.
+    assert inst.get.call_args_list[-1].kwargs.get("cache") is False
+    assert inst.get.call_args_list[-1].args[0].endswith("/workouts/2026-10-07/2026-10-07")
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_not_verified_when_missing_or_visible():
+    for saved in ([], [{"workoutId": 999, "isHidden": False}]):
+        inst = _client_with(_card_router(saved), post=APIResponse(success=True, data={"workoutId": 999}))
+        p = _patch(inst)
+        try:
+            r = await tp_copy_plan_workout(163992, 12, "2026-10-07")
+        finally:
+            p.stop()
+        assert r["success"] is False and r["verified"] is False and "not confirmed" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_rejects_unknown_and_period_cards():
+    for wid, code in ((404, "NOT_FOUND"), (11, "VALIDATION_ERROR")):
+        inst = _client_with(_card_router())
+        p = _patch(inst)
+        try:
+            r = await tp_copy_plan_workout(163992, wid, "2026-10-07")
+        finally:
+            p.stop()
+        assert r["isError"] is True and r["error_code"] == code
+        inst.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_validates_date():
+    r = await tp_copy_plan_workout(163992, 12, "not-a-date")
+    assert r["error_code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_plan_workouts_week_filter_exposes_ids():
+    inst = _client_with(_card_router())
+    p = _patch(inst)
+    try:
+        r = await tp_get_training_plan_workouts(163992, week=2)
+    finally:
+        p.stop()
+    assert r["week"] == 2 and r["count"] == 1
+    card = r["workouts"][0]
+    assert card["id"] == 13 and card["weekday"] == "Tue" and card["order_on_day"] == 1
