@@ -283,6 +283,16 @@ class TestResponseCacheInvalidateFamilies:
 
         assert cache.get(list_ep, "k1") is None
 
+    def test_create_note_invalidates_singular_notes_range(self):
+        # tp_get_notes reads .../calendarNote/{start}/{end} (singular), which must still be cleared.
+        cache = ResponseCache()
+        list_ep = f"{self.BASE}/calendarNote/2025-01-01/2025-01-31"
+        cache.put(list_ep, "k1", [{"id": 5}], ttl=300.0)
+
+        cache.invalidate(f"{self.BASE}/calendarNote")
+
+        assert cache.get(list_ep, "k1") is None
+
     def test_create_workout_invalidates_workouts_list(self):
         cache = ResponseCache()
         list_ep = f"{self.BASE}/workouts/2025-01-01/2025-01-31"

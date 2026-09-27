@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tp_mcp.client.http import APIResponse
+from tp_mcp.client.http import APIResponse, ErrorCode
 from tp_mcp.tools.workouts import (
     tp_add_workout_comment,
     tp_copy_workout,
@@ -834,12 +834,23 @@ class TestWorkoutComments:
     """Tests for workout comment tools."""
 
     @pytest.mark.asyncio
-    async def test_get_comments_success(self):
-        comments_data = [
-            {"id": 1, "value": "Great workout!", "createdAt": "2026-03-01"},
-            {"id": 2, "value": "Thanks coach", "createdAt": "2026-03-02"},
-        ]
-        response = APIResponse(success=True, data=comments_data)
+    async def test_get_comments_reads_v3_thread_with_names(self):
+        # Shape of the live GET /fitness/v3/athletes/{id}/workouts/{id}/comments response.
+        # (v2 is write-only: GET there returns HTTP 405.)
+        thread = {
+            "workoutId": 1001,
+            "comments": [
+                {"id": 1, "comment": "Legs heavy today", "dateCreated": "2026-09-10",
+                 "commenterPersonId": 123},
+                {"id": 2, "comment": "Great move, rest up", "dateCreated": "2026-09-11",
+                 "commenterPersonId": 9},
+            ],
+            "people": [
+                {"id": 9, "name": "Coach Simon", "profilePhotoUrl": "https://x/y.jpg"},
+                {"id": 123, "name": "Test Athlete", "profilePhotoUrl": None},
+            ],
+        }
+        response = APIResponse(success=True, data=thread)
 
         with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
             mock_instance = AsyncMock()
@@ -849,8 +860,60 @@ class TestWorkoutComments:
 
             result = await tp_get_workout_comments("1001")
 
+        mock_instance.get.assert_awaited_once_with("/fitness/v3/athletes/123/workouts/1001/comments")
         assert result["count"] == 2
-        assert len(result["comments"]) == 2
+        assert result["comments"][0] == {
+            "id": 1,
+            "comment": "Legs heavy today",
+            "created_at": "2026-09-10",
+            "commenter_id": 123,
+            "commenter": "Test Athlete",
+            "is_athlete": True,
+        }
+        assert result["comments"][1]["commenter"] == "Coach Simon"
+        assert result["comments"][1]["is_athlete"] is False
+        assert "profilePhotoUrl" not in str(result)
+
+    @pytest.mark.asyncio
+    async def test_get_comments_unknown_commenter_has_no_name(self):
+        thread = {"comments": [{"id": 3, "comment": "hi", "commenterPersonId": 77}], "people": []}
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=thread))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout_comments("1001")
+
+        assert result["comments"][0]["commenter"] is None
+        assert result["comments"][0]["is_athlete"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_comments_api_error_propagates(self):
+        response = APIResponse(success=False, error_code=ErrorCode.API_ERROR, message="API error: 405")
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout_comments("1001")
+
+        assert result["isError"] is True
+        assert result["error_code"] == "API_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_get_comments_empty_v3_thread(self):
+        response = APIResponse(success=True, data={"workoutId": 1001, "comments": [], "people": []})
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout_comments("1001")
+
+        assert result == {"comments": [], "count": 0, "message": "No comments on this workout."}
 
     @pytest.mark.asyncio
     async def test_get_comments_empty(self):

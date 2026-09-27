@@ -63,11 +63,22 @@ Found while mining a coach's session notes and comments for the Head Coach week-
 (Jarasport `trainingpeaks/`). Both were reproduced read-only on 2026-09-27 against a coached
 athlete's week (coach account, `athlete` target set).
 
-- [ ] **FIX-01 `tp_get_workout_comments` returns HTTP 405.** `GET` on the comments endpoint used
+- [x] **FIX-01 `tp_get_workout_comments` returns HTTP 405.** *Resolved 2026-09-27:* reads now use
+  `GET /fitness/v3/athletes/{id}/workouts/{id}/comments` (v2 only takes writes, so GET was 405).
+  v3 returns the thread plus a `people` list; the tool maps each comment to `comment`,
+  `created_at`, `commenter` (name) and `is_athlete`. Verified live, read-only.
+  Original report: `GET` on the comments endpoint used
   by `tools/workouts.py` is rejected with 405 Method Not Allowed for a normal planned workout.
   The endpoint or verb has likely changed. Capture the TrainingPeaks web app's current request
   for a workout's comment thread and update the tool. Needed for coach-voice / comment extraction.
-- [ ] **FIX-02 `tp_get_notes` returns NOT_FOUND for a week that has calendar note cards.** The
+- [x] **FIX-02 `tp_get_notes` returns NOT_FOUND for a week that has calendar note cards.**
+  *Resolved 2026-09-27:* the range read is singular, `GET /fitness/v1/athletes/{id}/calendarNote/{start}/{end}`
+  (the plural `calendarNotes` path is a 404). Hidden notes were also silently dropped; the tool now
+  reports `hidden_count` and takes `include_hidden` (default false) for a coach's own notes.
+  `tp_get_note` and `tp_get_note_comments` already used working paths (verified live; note comments
+  come back empty for every note in the window, so their with-data shape is still unconfirmed).
+  The "note/REST cards" in the original report are mostly workouts (Crosstrain/DayOff/Other), not
+  calendar notes. Original report: The
   week 2026-09-28 to 2026-10-04 visibly holds note/REST cards (they come back from
   `tp_get_workouts` as Crosstrain/DayOff/Other items), yet `tp_get_notes` returns
   `NOT_FOUND`. The notes endpoint (or its athlete scoping in coach mode) needs re-checking.

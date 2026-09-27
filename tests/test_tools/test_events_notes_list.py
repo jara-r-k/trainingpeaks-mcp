@@ -79,6 +79,34 @@ class TestGetNotes:
         assert result["count"] == 2
         ids = [n["id"] for n in result["notes"]]
         assert 2 not in ids
+        assert result["hidden_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_reads_singular_calendar_note_range_endpoint(self):
+        # The live range read is .../calendarNote/{start}/{end}; the plural path 404s.
+        response = APIResponse(success=True, data=[])
+        mock_instance = _client_patch(response)
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = mock_instance
+            await tp_get_notes("2026-09-01", "2026-10-11")
+
+        mock_instance.get.assert_awaited_once_with("/fitness/v1/athletes/123/calendarNote/2026-09-01/2026-10-11")
+
+    @pytest.mark.asyncio
+    async def test_include_hidden_returns_coach_notes(self):
+        raw = [
+            {"id": 1, "title": "Visible", "noteDate": "2026-09-01T00:00:00", "isHidden": False},
+            {"id": 2, "title": "Coach only", "noteDate": "2026-09-10T00:00:00", "isHidden": True},
+        ]
+        with patch("tp_mcp.tools.notes.TPClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value = _client_patch(APIResponse(success=True, data=raw))
+            result = await tp_get_notes("2026-09-01", "2026-10-11", include_hidden=True)
+
+        assert result["count"] == 2
+        assert result["hidden_count"] == 1
+        hidden = next(n for n in result["notes"] if n["id"] == 2)
+        assert hidden["is_hidden"] is True
+        assert hidden["date"] == "2026-09-10"
 
     @pytest.mark.asyncio
     async def test_empty_range(self):
