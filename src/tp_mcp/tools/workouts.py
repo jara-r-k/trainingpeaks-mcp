@@ -145,6 +145,14 @@ SPORT_TYPE_MAP: dict[str, tuple[int, int]] = {
     "Other": (100, 100),
 }
 
+# The API sends workoutTypeValueId, not workoutTypeFamilyId, on reads.
+SPORT_NAME_BY_ID: dict[int, str] = {value_id: name for name, (_, value_id) in SPORT_TYPE_MAP.items()}
+
+
+def sport_name(family: Any, value_id: Any) -> Any:
+    """Readable sport: the family field if present, else the name for the type ID."""
+    return family or SPORT_NAME_BY_ID.get(value_id, value_id)
+
 
 def _format_workout_day(value: date_type | datetime_type) -> str:
     """Format a workout day value for the TrainingPeaks API."""
@@ -236,7 +244,7 @@ async def tp_get_workouts(
                     "date": w.date.isoformat(),
                     "title": w.title,
                     "type": w.workout_status,
-                    "sport": w.sport,
+                    "sport": sport_name(w.sport, w.workout_type),
                     "duration_planned": w.duration_planned,
                     "duration_actual": w.duration_actual,
                     "distance_planned_km": w.distance_planned / 1000 if w.distance_planned else None,
@@ -329,7 +337,7 @@ async def tp_get_workout(workout_id: str) -> dict[str, Any]:
                 "id": str(workout.id),
                 "date": workout.date.isoformat(),
                 "title": workout.title,
-                "sport": workout.sport,
+                "sport": sport_name(workout.sport, workout.workout_type),
                 "workout_type": workout.workout_type,
                 "description": workout.description,
                 "coach_comments": workout.coach_comments,

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from tp_mcp.client import TPClient
 from tp_mcp.tools._validation import WorkoutIdInput, format_validation_error
+from tp_mcp.tools.workouts import sport_name
 
 logger = logging.getLogger("tp-mcp")
 
@@ -104,7 +105,7 @@ async def tp_get_library_items(library_id: str) -> dict[str, Any]:
             {
                 "id": item.get("exerciseLibraryItemId", item.get("id")),
                 "name": item.get("itemName", item.get("name", "")),
-                "sport": item.get("workoutTypeId", item.get("workoutTypeFamilyId")),
+                "sport": sport_name(item.get("workoutTypeFamilyId"), item.get("workoutTypeId")),
                 "duration": item.get("totalTimePlanned"),
                 "distance_m": item.get("distancePlanned"),
                 "tss": item.get("tssPlanned"),

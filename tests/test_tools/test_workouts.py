@@ -30,6 +30,23 @@ class TestTpGetWorkouts:
         assert len(result["workouts"]) == 2
 
     @pytest.mark.asyncio
+    async def test_get_workouts_names_sport_from_workout_type_value_id(self):
+        """The live API sends workoutTypeValueId (3 = Run) and no workoutTypeFamilyId."""
+        raw = [
+            {"workoutId": 1, "workoutDay": "2026-09-22", "title": "Run", "workoutTypeValueId": 3},
+            {"workoutId": 2, "workoutDay": "2026-09-23", "title": "?", "workoutTypeValueId": 999},
+        ]
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=raw))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workouts("2026-09-22", "2026-09-23")
+
+        assert [w["sport"] for w in result["workouts"]] == ["Run", 999]
+
+    @pytest.mark.asyncio
     async def test_get_workouts_exposes_planned_and_actual_tss(self, mock_api_responses):
         """tss_planned and tss_actual are exposed alongside the coalesced tss.
 

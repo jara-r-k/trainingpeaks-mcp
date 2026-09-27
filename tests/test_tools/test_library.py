@@ -113,7 +113,7 @@ class TestGetLibraryItems:
 
             result = await tp_get_library_items("1")
 
-        assert result["items"][0]["sport"] == 1
+        assert result["items"][0]["sport"] == "Swim"
         assert result["items"][0]["distance_m"] == 2000.0
 
 
