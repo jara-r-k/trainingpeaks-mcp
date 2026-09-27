@@ -17,23 +17,61 @@ from tp_mcp.tools.library import (
 
 class TestGetLibraries:
     @pytest.mark.asyncio
-    async def test_list_libraries(self):
-        data = [
-            {"exerciseLibraryId": 1, "name": "My Workouts", "isDefault": False, "itemCount": 5},
-            {"exerciseLibraryId": 2, "name": "Default", "isDefault": True, "itemCount": 20},
+    async def test_list_libraries_maps_real_api_fields(self):
+        # Field names as the live /exerciselibrary/v2/libraries endpoint returns them.
+        listing = [
+            {"exerciseLibraryId": 1, "libraryName": "My Workouts", "ownerName": "Coach", "isDefaultContent": False},
+            {"exerciseLibraryId": 2, "libraryName": "Default", "ownerName": "TP", "isDefaultContent": True},
         ]
-        response = APIResponse(success=True, data=data)
+        responses = {
+            "/exerciselibrary/v2/libraries": APIResponse(success=True, data=listing),
+            "/exerciselibrary/v2/libraries/1/items": APIResponse(success=True, data=[{}] * 5),
+            "/exerciselibrary/v2/libraries/2/items": APIResponse(success=True, data=[]),
+        }
         with patch("tp_mcp.tools.library.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
-            mock_instance.get = AsyncMock(return_value=response)
+            mock_instance.get = AsyncMock(side_effect=lambda endpoint, **_: responses[endpoint])
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             result = await tp_get_libraries()
 
         assert result["count"] == 2
-        assert result["libraries"][0]["name"] == "My Workouts"
-        assert result["libraries"][1]["is_default"] is True
+        first, second = result["libraries"]
+        assert first == {"id": 1, "name": "My Workouts", "owner": "Coach", "is_default": False, "item_count": 5}
+        assert second["name"] == "Default"
+        assert second["is_default"] is True
+        assert second["item_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_item_count_is_none_when_items_unreadable(self):
+        listing = [{"exerciseLibraryId": 7, "libraryName": "Shared"}]
+        responses = {
+            "/exerciselibrary/v2/libraries": APIResponse(success=True, data=listing),
+            "/exerciselibrary/v2/libraries/7/items": APIResponse(success=False, message="Forbidden"),
+        }
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(side_effect=lambda endpoint, **_: responses[endpoint])
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_libraries()
+
+        assert result["libraries"][0]["name"] == "Shared"
+        assert result["libraries"][0]["item_count"] is None
+
+    @pytest.mark.asyncio
+    async def test_empty_listing(self):
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=[]))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_libraries()
+
+        assert result == {"libraries": [], "count": 0}
 
 
 class TestGetLibraryItems:
@@ -53,6 +91,30 @@ class TestGetLibraryItems:
 
         assert result["count"] == 1
         assert result["items"][0]["name"] == "Sweet Spot"
+
+    @pytest.mark.asyncio
+    async def test_items_map_workout_type_id_and_distance(self):
+        # The live items endpoint sends workoutTypeId (1 = Swim), not workoutTypeFamilyId.
+        data = [
+            {
+                "exerciseLibraryItemId": 11,
+                "itemName": "CSS test",
+                "workoutTypeId": 1,
+                "totalTimePlanned": 1.2,
+                "tssPlanned": 31,
+                "distancePlanned": 2000.0,
+            }
+        ]
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(return_value=APIResponse(success=True, data=data))
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_library_items("1")
+
+        assert result["items"][0]["sport"] == 1
+        assert result["items"][0]["distance_m"] == 2000.0
 
 
 class TestCreateLibrary:
