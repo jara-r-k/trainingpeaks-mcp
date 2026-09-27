@@ -150,8 +150,14 @@ SPORT_NAME_BY_ID: dict[int, str] = {value_id: name for name, (_, value_id) in SP
 
 
 def sport_name(family: Any, value_id: Any) -> Any:
-    """Readable sport: the family field if present, else the name for the type ID."""
-    return family or SPORT_NAME_BY_ID.get(value_id, value_id)
+    """Readable sport name. Integer ids (family or value) map through SPORT_NAME_BY_ID;
+    an unknown id is returned as-is."""
+    for raw in (family, value_id):
+        if isinstance(raw, int):
+            return SPORT_NAME_BY_ID.get(raw, raw)
+        if raw:
+            return raw
+    return None
 
 
 def _format_workout_day(value: date_type | datetime_type) -> str:
@@ -245,6 +251,8 @@ async def tp_get_workouts(
                     "title": w.title,
                     "type": w.workout_status,
                     "sport": sport_name(w.sport, w.workout_type),
+                    "is_hidden": w.is_hidden,
+                    "order_on_day": w.order_on_day,
                     "duration_planned": w.duration_planned,
                     "duration_actual": w.duration_actual,
                     "distance_planned_km": w.distance_planned / 1000 if w.distance_planned else None,
@@ -397,6 +405,7 @@ async def tp_create_workout(
     tags: str | None = None,
     feeling: int | None = None,
     rpe: int | None = None,
+    is_hidden: bool | None = None,
 ) -> dict[str, Any]:
     """Create a planned workout.
 
@@ -414,6 +423,7 @@ async def tp_create_workout(
         tags: Optional comma-separated tags string.
         feeling: Optional feeling score (0-10).
         rpe: Optional RPE score (1-10).
+        is_hidden: Optional to hide the workout to the athlete.
 
     Returns:
         Dict with created workout details or error.
@@ -433,6 +443,7 @@ async def tp_create_workout(
             tags=tags,
             feeling=feeling,
             rpe=rpe,
+            is_hidden=is_hidden,
         )
     except (ValidationError, ValueError) as e:
         msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
@@ -491,6 +502,7 @@ async def tp_create_workout(
             "workoutTypeFamilyId": family_id,
             "workoutTypeValueId": type_id,
             "title": params.title,
+            "isHidden": params.is_hidden if params.is_hidden is not None else False,
         }
         if isinstance(params.date, datetime_type):
             payload["startTimePlanned"] = _format_start_time_planned(params.date)
@@ -561,6 +573,7 @@ async def tp_update_workout(
     coach_comment: str | None = None,
     feeling: int | None = None,
     rpe: int | None = None,
+    is_hidden: bool | None = None,
     structure: dict[str, Any] | str | None = None,
     structured_workout: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -590,6 +603,7 @@ async def tp_update_workout(
             coach_comment=coach_comment,
             feeling=feeling,
             rpe=rpe,
+            is_hidden=is_hidden,
             structure=structure,
             structured_workout=structured_workout,
         )
@@ -694,6 +708,8 @@ async def tp_update_workout(
             existing["feeling"] = params.feeling
         if params.rpe is not None:
             existing["rpe"] = params.rpe
+        if params.is_hidden is not None:
+            existing["isHidden"] = params.is_hidden
         if params.structure is not None:
             existing["structure"] = json.dumps(structure_payload.wire_structure)
             if effective_if is not None:
@@ -769,6 +785,7 @@ async def tp_copy_workout(
     workout_id: str,
     target_date: str,
     title: str | None = None,
+    is_hidden: bool | None = None,
 ) -> dict[str, Any]:
     """Copy an existing workout to a new date.
 
@@ -779,6 +796,7 @@ async def tp_copy_workout(
         workout_id: The source workout ID.
         target_date: Target date in ISO format (YYYY-MM-DD).
         title: Optional title override.
+        is_hidden: Hide the copy from the athlete (coach accounts). None keeps TP's default.
 
     Returns:
         Dict with new workout details or error.
@@ -853,6 +871,9 @@ async def tp_copy_workout(
         ]:
             if source.get(field) is not None:
                 payload[field] = source[field]
+
+        if is_hidden is not None:
+            payload["isHidden"] = is_hidden
 
         # Copy user tags (API uses userTags, not tags)
         if source.get("userTags") is not None:

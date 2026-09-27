@@ -21,6 +21,7 @@ from tp_mcp.tools import (
     tp_add_workout_comment,
     tp_analyze_workout,
     tp_auth_status,
+    tp_copy_plan_workout,
     tp_copy_workout,
     tp_create_availability,
     tp_create_equipment,
@@ -56,6 +57,8 @@ from tp_mcp.tools import (
     tp_get_peaks,
     tp_get_pool_length_settings,
     tp_get_profile,
+    tp_get_training_plan,
+    tp_get_training_plan_workouts,
     tp_get_weekly_summary,
     tp_get_workout,
     tp_get_workout_comments,
@@ -63,6 +66,7 @@ from tp_mcp.tools import (
     tp_get_workout_types,
     tp_get_workouts,
     tp_list_athletes,
+    tp_list_training_plans,
     tp_log_metrics,
     tp_pair_workout,
     tp_refresh_auth,
@@ -240,6 +244,11 @@ TOOLS = [
                 },
                 "feeling": {"type": "integer", "description": "Feeling score 0-10"},
                 "rpe": {"type": "integer", "description": "RPE score 1-10"},
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": "Whether to hide the workout",
+                    "default": False,
+                },
             },
             "required": ["date", "sport", "title"],
         },
@@ -271,6 +280,10 @@ TOOLS = [
                 "coach_comment": {"type": "string"},
                 "feeling": {"type": "integer", "description": "0-10"},
                 "rpe": {"type": "integer", "description": "1-10"},
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": "Whether to hide the workout",
+                },
                 "structure": {
                     "type": ["object", "string"],
                     "description": STRUCTURE_DESCRIPTION,
@@ -301,6 +314,7 @@ TOOLS = [
                 "workout_id": {"type": "string", "description": "Source workout ID"},
                 "target_date": {"type": "string", "description": "YYYY-MM-DD"},
                 "title": {"type": "string", "description": "Optional title override"},
+                "is_hidden": {"type": "boolean", "description": "Hide the copy from the athlete (coach accounts)"},
             },
             "required": ["workout_id", "target_date"],
         },
@@ -536,6 +550,60 @@ TOOLS = [
             "required": ["start_date", "end_date"],
         },
     ),
+    # --- Training Plans (multi-week Plan Store / "My Plans" — distinct from
+    #     workout libraries and the ATP) ---
+    Tool(
+        name="tp_list_training_plans",
+        description="List the coach's authored multi-week training plans (id, title, "
+                    "weeks, workout count, total hours, category, price).",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="tp_get_training_plan",
+        description="Summary of one training plan: weeks, per-week duration/distance, "
+                    "sport breakdown, description.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Plan id (from tp_list_training_plans)"},
+            },
+            "required": ["plan_id"],
+        },
+    ),
+    Tool(
+        name="tp_get_training_plan_workouts",
+        description="All workouts of a training plan laid out by week/day "
+                    "(sport, title, description, duration, TSS, has_structure).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Plan id"},
+                "week": {"type": "integer", "description": "Optional: only this plan week (1-based)"},
+            },
+            "required": ["plan_id"],
+        },
+    ),
+    Tool(
+        name="tp_copy_plan_workout",
+        description="Copy ONE training-plan workout (a single card, by id from "
+                    "tp_get_training_plan_workouts) onto the athlete's calendar on a date. "
+                    "Hidden from the athlete by default. REQUIRES athlete (never copies to "
+                    "your own calendar). Re-reads the day and returns created/verified. "
+                    "Does not retry; never re-copy when created is true or null.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Plan id"},
+                "plan_workout_id": {"type": "integer", "description": "Plan workout id (the card)"},
+                "target_date": {"type": "string", "description": "Athlete calendar date (YYYY-MM-DD)"},
+                "is_hidden": {"type": "boolean", "description": "Hide from athlete (default true)", "default": True},
+            },
+            "required": ["plan_id", "plan_workout_id", "target_date"],
+        },
+    ),
+    # tp_apply_training_plan is deliberately NOT registered in this fork: it bulk-writes
+    # a whole plan as visible workouts. Coaching copies go one card at a time through
+    # tp_copy_plan_workout (hidden, verified). The function stays for upstream parity.
     # --- Athlete Settings ---
     Tool(
         name="tp_get_athlete_settings",
@@ -1111,6 +1179,7 @@ async def _h_create_workout(args):
         tags=args.get("tags"),
         feeling=args.get("feeling"),
         rpe=args.get("rpe"),
+        is_hidden=args.get("is_hidden", False),
     )
 
 
@@ -1133,6 +1202,7 @@ async def _h_update_workout(args):
         rpe=args.get("rpe"),
         structure=args.get("structure"),
         structured_workout=args.get("structured_workout"),
+        is_hidden=args.get("is_hidden"),
     )
 
 
@@ -1147,6 +1217,7 @@ async def _h_copy_workout(args):
         workout_id=args["workout_id"],
         target_date=args["target_date"],
         title=args.get("title"),
+        is_hidden=args.get("is_hidden"),
     )
 
 
@@ -1248,6 +1319,27 @@ async def _h_weekly_summary(args):
 @_handler("tp_get_atp")
 async def _h_get_atp(args):
     return await tp_get_atp(start_date=args["start_date"], end_date=args["end_date"])
+
+
+@_handler("tp_list_training_plans")
+async def _h_list_training_plans(args): return await tp_list_training_plans()
+
+@_handler("tp_get_training_plan")
+async def _h_get_training_plan(args): return await tp_get_training_plan(plan_id=args["plan_id"])
+
+@_handler("tp_get_training_plan_workouts")
+async def _h_get_training_plan_workouts(args):
+    return await tp_get_training_plan_workouts(plan_id=args["plan_id"], week=args.get("week"))
+
+
+@_handler("tp_copy_plan_workout")
+async def _h_copy_plan_workout(args):
+    return await tp_copy_plan_workout(
+        plan_id=args["plan_id"],
+        plan_workout_id=args["plan_workout_id"],
+        target_date=args["target_date"],
+        is_hidden=args.get("is_hidden", True),
+    )
 
 
 # --- Athlete Settings ---

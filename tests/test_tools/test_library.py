@@ -91,6 +91,7 @@ class TestGetLibraryItems:
 
         assert result["count"] == 1
         assert result["items"][0]["name"] == "Sweet Spot"
+        assert result["items"][0]["sport"] == "Bike"  # integer family ids map to names too
 
     @pytest.mark.asyncio
     async def test_items_map_workout_type_id_and_distance(self):
