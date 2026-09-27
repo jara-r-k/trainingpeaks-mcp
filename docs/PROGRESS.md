@@ -4,7 +4,7 @@
 MVP - Complete & Production Ready
 
 ## Last Updated
-2026-04-04
+2026-09-27
 
 ## Completed Tasks
 
@@ -56,6 +56,23 @@ MVP - Complete & Production Ready
 - [x] TOOL-12 - tp_unpair_workout (split paired workout into completed + planned via split endpoint)
 - [ ] TOOL-09 - tp_move_workout
 - [ ] TOOL-10 - tp_get_health_metrics (sleep, resting HR, HRV, weight)
+
+## Backlog (open defects)
+
+Found while mining a coach's session notes and comments for the Head Coach week-copy work
+(Jarasport `trainingpeaks/`). Both were reproduced read-only on 2026-09-27 against a coached
+athlete's week (coach account, `athlete` target set).
+
+- [ ] **FIX-01 `tp_get_workout_comments` returns HTTP 405.** `GET` on the comments endpoint used
+  by `tools/workouts.py` is rejected with 405 Method Not Allowed for a normal planned workout.
+  The endpoint or verb has likely changed. Capture the TrainingPeaks web app's current request
+  for a workout's comment thread and update the tool. Needed for coach-voice / comment extraction.
+- [ ] **FIX-02 `tp_get_notes` returns NOT_FOUND for a week that has calendar note cards.** The
+  week 2026-09-28 to 2026-10-04 visibly holds note/REST cards (they come back from
+  `tp_get_workouts` as Crosstrain/DayOff/Other items), yet `tp_get_notes` returns
+  `NOT_FOUND`. The notes endpoint (or its athlete scoping in coach mode) needs re-checking.
+  Needed so REST/sick/holiday/procedure marker cards can be read as notes rather than inferred
+  from workout types.
 
 ## Recent Changes (2026-04-04)
 
