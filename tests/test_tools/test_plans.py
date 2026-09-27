@@ -220,9 +220,21 @@ async def test_copy_plan_workout_created_but_visible_is_not_verified(as_athlete)
 
 @pytest.mark.asyncio
 async def test_copy_plan_workout_missing_after_post(as_athlete):
+    # TP returned an id but the day doesn't show it yet: unknown, never "not created".
     inst = _client_with(_card_router([], []), post=APIResponse(success=True, data={"workoutId": 999}))
     r = await _copy(inst, 163992, 12, "2026-10-07")
-    assert r["created"] is False and r["verified"] is False
+    assert r["created"] is None and r["verified"] is False and "Do NOT re-copy" in r["message"]
+    # No id and nothing new on the day: genuinely not created.
+    inst = _client_with(_card_router([], []), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is False
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_post_error_not_found_is_unknown(as_athlete):
+    inst = _client_with(_card_router([], []), post=APIResponse(success=False, message="timeout"))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["isError"] is True and r["created"] is None
 
 
 @pytest.mark.asyncio

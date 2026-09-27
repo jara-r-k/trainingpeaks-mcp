@@ -294,8 +294,15 @@ async def tp_copy_plan_workout(
             (w for w in added if (w.get("title") or "").strip() == payload["title"]), None
         )
         if post_error and saved is None:
-            return {**post_error, "created": False if after is not None else None}
-        created: bool | None = saved is not None if after is not None else None
+            # The request may have saved server-side before failing: unknown, check first.
+            return {**post_error, "created": None}
+        created: bool | None
+        if saved is not None:
+            created = True
+        elif after is None or new_id:
+            created = None  # TP returned an id (or the re-read failed) but the day doesn't show it yet
+        else:
+            created = False
         verified = saved is not None and bool(saved.get("isHidden")) == is_hidden
         result: dict[str, Any] = {
             "success": verified,
@@ -310,7 +317,7 @@ async def tp_copy_plan_workout(
         }
         if created is None:
             result["message"] = (
-                "Could not re-read the day: unknown whether it was created. Do NOT re-copy; check first."
+                "Unknown whether it was created (not visible on re-read yet). Do NOT re-copy; check first."
             )
         elif not created:
             result["message"] = "Not found on the calendar after copying."
