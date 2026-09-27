@@ -1,5 +1,6 @@
 """Workout library tools: templates, scheduling."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -7,6 +8,7 @@ from pydantic import ValidationError
 
 from tp_mcp.client import TPClient
 from tp_mcp.tools._validation import WorkoutIdInput, format_validation_error
+from tp_mcp.tools.workouts import sport_name
 
 logger = logging.getLogger("tp-mcp")
 
@@ -37,14 +39,24 @@ async def tp_get_libraries() -> dict[str, Any]:
             }
 
         data = response.data if isinstance(response.data, list) else []
+        ids = [lib.get("exerciseLibraryId", lib.get("id")) for lib in data]
+
+        # The listing endpoint carries no item count, so count each folder's
+        # items concurrently. None (not 0) when a folder's items can't be read.
+        async def count_items(library_id: Any) -> int | None:
+            items = await client.get(f"/exerciselibrary/v2/libraries/{library_id}/items")
+            return None if items.is_error or not isinstance(items.data, list) else len(items.data)
+
+        counts = await asyncio.gather(*(count_items(i) for i in ids))
         libraries = [
             {
-                "id": lib.get("exerciseLibraryId", lib.get("id")),
-                "name": lib.get("name", ""),
-                "is_default": lib.get("isDefault", False),
-                "item_count": lib.get("itemCount", 0),
+                "id": library_id,
+                "name": lib.get("libraryName", lib.get("name", "")),
+                "owner": lib.get("ownerName"),
+                "is_default": lib.get("isDefaultContent", lib.get("isDefault", False)),
+                "item_count": count,
             }
-            for lib in data
+            for lib, library_id, count in zip(data, ids, counts, strict=True)
         ]
 
         return {"libraries": libraries, "count": len(libraries)}
@@ -93,8 +105,9 @@ async def tp_get_library_items(library_id: str) -> dict[str, Any]:
             {
                 "id": item.get("exerciseLibraryItemId", item.get("id")),
                 "name": item.get("itemName", item.get("name", "")),
-                "sport": item.get("workoutTypeFamilyId"),
+                "sport": sport_name(item.get("workoutTypeFamilyId"), item.get("workoutTypeId")),
                 "duration": item.get("totalTimePlanned"),
+                "distance_m": item.get("distancePlanned"),
                 "tss": item.get("tssPlanned"),
             }
             for item in data
