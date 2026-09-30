@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 from typing import Any
 
 from pydantic import ValidationError
@@ -310,11 +311,11 @@ async def tp_create_library_item(
             "message": "Template name must not be empty.",
         }
 
-    if distance_m is not None and distance_m <= 0:
+    if distance_m is not None and (not math.isfinite(distance_m) or distance_m <= 0):
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
-            "message": "Distance must be greater than 0 metres.",
+            "message": "Distance must be a finite value greater than 0 metres.",
         }
 
     async with TPClient() as client:

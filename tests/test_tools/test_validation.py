@@ -77,6 +77,17 @@ class TestCreateWorkoutInput:
         assert result.duration_minutes == 60
         assert result.is_hidden is None
 
+    def test_distance_only_swim_is_valid(self):
+        result = CreateWorkoutInput(
+            date="2026-10-12", sport="Swim", title="Swim 3p0k", distance_km=3.0
+        )
+        assert result.distance_km == 3.0
+        assert result.duration_minutes is None
+
+    def test_rejects_no_duration_distance_or_structure(self):
+        with pytest.raises(ValidationError, match="distance_km"):
+            CreateWorkoutInput(date="2026-10-12", sport="Swim", title="Swim")
+
     def test_accepts_hidden_flag(self):
         result = CreateWorkoutInput(
             date="2025-06-01",

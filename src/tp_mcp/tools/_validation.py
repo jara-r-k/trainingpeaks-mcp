@@ -94,11 +94,13 @@ class CreateWorkoutInput(BaseModel):
             raise ValueError("Provide only one of structure or structured_workout")
         if (
             self.duration_minutes is None
+            and self.distance_km is None
             and self.structure is None
             and self.structured_workout is None
         ):
             raise ValueError(
-                "Either duration_minutes, structure, or structured_workout must be provided",
+                "Either duration_minutes, distance_km, structure, or structured_workout"
+                " must be provided",
             )
         return self
 

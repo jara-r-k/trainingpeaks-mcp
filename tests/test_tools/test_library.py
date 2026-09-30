@@ -207,6 +207,21 @@ class TestCreateLibraryItem:
         assert result["error_code"] == "VALIDATION_ERROR"
         mock_client.assert_not_called()
 
+    @pytest.mark.parametrize("distance_m", [float("nan"), float("inf")])
+    @pytest.mark.asyncio
+    async def test_create_rejects_non_finite_distance(self, distance_m):
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            result = await tp_create_library_item(
+                library_id="1",
+                name="Swim",
+                sport_family_id=1,
+                sport_type_id=1,
+                distance_m=distance_m,
+            )
+
+        assert result["error_code"] == "VALIDATION_ERROR"
+        mock_client.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_create_schema_and_dispatch_include_distance_m(self):
         tools = await list_tools()
