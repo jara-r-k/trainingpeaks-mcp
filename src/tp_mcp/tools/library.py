@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 from typing import Any
 
 from pydantic import ValidationError
@@ -275,6 +276,7 @@ async def tp_create_library_item(
     tss: float | None = None,
     description: str | None = None,
     structure: dict[str, Any] | None = None,
+    distance_m: float | None = None,
 ) -> dict[str, Any]:
     """Save a workout template to a library.
 
@@ -284,6 +286,7 @@ async def tp_create_library_item(
         sport_family_id: Sport family ID.
         sport_type_id: Sport type ID.
         duration_hours: Optional duration in hours.
+        distance_m: Optional planned distance in metres.
         tss: Optional planned TSS.
         description: Optional description.
         structure: Optional interval structure (nested object, NOT string).
@@ -308,6 +311,13 @@ async def tp_create_library_item(
             "message": "Template name must not be empty.",
         }
 
+    if distance_m is not None and (not math.isfinite(distance_m) or distance_m <= 0):
+        return {
+            "isError": True,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Distance must be a finite value greater than 0 metres.",
+        }
+
     async with TPClient() as client:
         athlete_id = await client.ensure_athlete_id()
         if not athlete_id:
@@ -325,6 +335,8 @@ async def tp_create_library_item(
         }
         if duration_hours is not None:
             payload["totalTimePlanned"] = duration_hours
+        if distance_m is not None:
+            payload["distancePlanned"] = distance_m
         if tss is not None:
             payload["tssPlanned"] = tss
         if description:
