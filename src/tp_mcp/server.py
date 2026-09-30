@@ -1038,6 +1038,11 @@ TOOLS = [
                 "sport_family_id": {"type": "integer"},
                 "sport_type_id": {"type": "integer"},
                 "duration_hours": {"type": "number"},
+                "distance_m": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Optional planned distance in metres",
+                },
                 "tss": {"type": "number"},
                 "description": {"type": "string"},
                 "structure": {
@@ -1622,6 +1627,7 @@ async def _h_create_lib_item(args):
         sport_family_id=args["sport_family_id"],
         sport_type_id=args["sport_type_id"],
         duration_hours=args.get("duration_hours"),
+        distance_m=args.get("distance_m"),
         tss=args.get("tss"),
         description=args.get("description"),
         structure=args.get("structure"),

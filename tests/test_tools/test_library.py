@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tp_mcp.client.http import APIResponse
+from tp_mcp.server import call_tool, list_tools
 from tp_mcp.tools.library import (
     tp_create_library,
     tp_create_library_item,
@@ -153,6 +154,22 @@ class TestDeleteLibrary:
 
 class TestCreateLibraryItem:
     @pytest.mark.asyncio
+    async def test_create_includes_distance_planned(self):
+        response = APIResponse(success=True, data={"exerciseLibraryItemId": 20})
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.post = AsyncMock(return_value=response)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_create_library_item(
+                library_id="1", name="Swim", sport_family_id=1, sport_type_id=1, distance_m=1500.0
+            )
+
+        assert result["success"] is True
+        assert mock_instance.post.call_args[1]["json"]["distancePlanned"] == 1500.0
+
+    @pytest.mark.asyncio
     async def test_create_with_structure_nested_object(self):
         """Library item structure should be nested object, not string."""
         structure = {"structure": [{"type": "step"}]}
@@ -171,8 +188,46 @@ class TestCreateLibraryItem:
 
         assert result["success"] is True
         payload = mock_instance.post.call_args[1]["json"]
+        assert "distancePlanned" not in payload
         # Structure should be nested object, NOT JSON string
         assert isinstance(payload["structure"], dict)
+
+    @pytest.mark.parametrize("distance_m", [0, -1])
+    @pytest.mark.asyncio
+    async def test_create_rejects_non_positive_distance(self, distance_m):
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            result = await tp_create_library_item(
+                library_id="1",
+                name="Swim",
+                sport_family_id=1,
+                sport_type_id=1,
+                distance_m=distance_m,
+            )
+
+        assert result["error_code"] == "VALIDATION_ERROR"
+        mock_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_schema_and_dispatch_include_distance_m(self):
+        tools = await list_tools()
+        tool = next(tool for tool in tools if tool.name == "tp_create_library_item")
+        assert tool.inputSchema["properties"]["distance_m"]["exclusiveMinimum"] == 0
+        assert "distance_m" not in tool.inputSchema["required"]
+
+        with patch("tp_mcp.server.tp_create_library_item", new_callable=AsyncMock) as create_item:
+            create_item.return_value = {"success": True}
+            await call_tool(
+                "tp_create_library_item",
+                {
+                    "library_id": "1",
+                    "name": "Swim",
+                    "sport_family_id": 1,
+                    "sport_type_id": 1,
+                    "distance_m": 1500.0,
+                },
+            )
+
+        assert create_item.await_args.kwargs["distance_m"] == 1500.0
 
 
 class TestScheduleLibraryWorkout:
