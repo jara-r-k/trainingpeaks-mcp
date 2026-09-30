@@ -240,7 +240,11 @@ async def test_copy_plan_workout_post_error_not_found_is_unknown(as_athlete):
 @pytest.mark.asyncio
 async def test_copy_plan_workout_post_error_but_created_is_reported_created(as_athlete):
     # e.g. a timeout after the server saved it: no id in the response, but the diff finds it.
-    after = [{"workoutId": 1000, "title": "CY NFR 60M", "isHidden": True}]
+    after = [{
+        "workoutId": 1000, "title": "CY NFR 60M", "isHidden": True,
+        "workoutTypeValueId": 2, "workoutDay": "2026-10-07T00:00:00",
+        "totalTimePlanned": 1.0, "distancePlanned": None, "structure": {"structure": [{"x": 1}]},
+    }]
     inst = _client_with(_card_router([], after), post=APIResponse(success=False, message="timeout"))
     r = await _copy(inst, 163992, 12, "2026-10-07")
     assert r["created"] is True and r["verified"] is True and r["workout_id"] == 1000
@@ -321,3 +325,91 @@ async def test_apply_refuses_without_athlete():
         p.stop()
     assert r["error_code"] == "VALIDATION_ERROR"
     inst.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("post_success", [True, False])
+async def test_copy_plan_workout_no_id_multiple_matches_are_unknown(as_athlete, post_success):
+    card = {**_CARDS[1], "workoutDay": "2026-10-07T00:00:00", "isHidden": True}
+    after = [{**card, "workoutId": wid} for wid in (999, 1000)]
+    inst = _client_with(_card_router([], after), post=APIResponse(success=post_success, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and "do NOT re-copy, check first" in r["message"]
+    inst.post.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_hidden, saved_hidden", [(True, True), (True, False), (False, False)])
+@pytest.mark.parametrize("structure", [{"structure": [{"x": 1}]}, '{ "structure" : [ { "x": 1 } ] }'])
+async def test_copy_plan_workout_no_id_unique_full_match(as_athlete, is_hidden, saved_hidden, structure):
+    card = {
+        **_CARDS[1], "workoutId": 999, "workoutDay": "2026-10-07T12:00:00",
+        "title": " CY NFR 60M ", "totalTimePlanned": "1.0000001", "distancePlanned": None,
+        "structure": structure, "isHidden": saved_hidden,
+    }
+    # A same-titled non-match and a pre-existing full match must not prevent adoption.
+    before = [{**card, "workoutId": 5}]
+    after = [*before, {**card, "workoutId": 1000, "totalTimePlanned": 2.0}, card]
+    inst = _client_with(_card_router(before, after), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07", is_hidden=is_hidden)
+    assert r["created"] is True and r["workout_id"] == 999
+    assert r["verified"] is (is_hidden == saved_hidden)
+    inst.post.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [
+    {"totalTimePlanned": 2.0}, {"totalTimePlanned": None}, {"totalTimePlanned": "invalid"},
+    {"distancePlanned": 0}, {"workoutTypeValueId": 3},
+    {"title": "Different"},
+])
+async def test_copy_plan_workout_no_id_mismatched_fields_not_adopted(as_athlete, changes):
+    card = {**_CARDS[1], "workoutId": 999, "workoutDay": "2026-10-07", "isHidden": True, **changes}
+    inst = _client_with(_card_router([], [card]), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and r["verified"] is False and r["workout_id"] is None
+    assert "do NOT re-copy" in r["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("structure", [{"structure": [{"x": 2}]}, None, "invalid json"])
+async def test_copy_plan_workout_no_id_different_structure_not_adopted(as_athlete, structure):
+    card = {
+        **_CARDS[1], "workoutId": 999, "workoutDay": "2026-10-07", "isHidden": True,
+        "structure": structure,
+    }
+    inst = _client_with(_card_router([], [card]), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is None and r["verified"] is False and r["workout_id"] is None
+    assert "do NOT re-copy" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_no_id_empty_after_is_not_created(as_athlete):
+    inst = _client_with(_card_router([], []), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert r["created"] is False and r["verified"] is False and r["workout_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_no_id_derived_duration_and_extra_structure_are_unknown(as_athlete, monkeypatch):
+    monkeypatch.delitem(_CARDS[1], "totalTimePlanned")
+    card = {
+        **_CARDS[1], "workoutId": 999, "workoutDay": "2026-10-07", "isHidden": True,
+        "totalTimePlanned": 1.0, "structure": {"structure": [{"x": 1}], "primaryLengthMetric": "duration"},
+    }
+    inst = _client_with(_card_router([], [card]), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert "totalTimePlanned" not in inst.post.call_args.kwargs["json"]
+    assert r["created"] is None and r["verified"] is False and r["workout_id"] is None
+    assert "do NOT re-copy, check first" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_copy_plan_workout_no_id_dict_structure_matches_json_payload(as_athlete):
+    card = {**_CARDS[1], "workoutId": 999, "workoutDay": "2026-10-07T00:00:00", "isHidden": True}
+    inst = _client_with(_card_router([], [card]), post=APIResponse(success=True, data={}))
+    r = await _copy(inst, 163992, 12, "2026-10-07")
+    assert isinstance(card["structure"], dict)
+    assert isinstance(inst.post.call_args.kwargs["json"]["structure"], str)
+    assert r["created"] is True and r["verified"] is True and r["workout_id"] == 999
