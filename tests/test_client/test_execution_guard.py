@@ -386,6 +386,12 @@ async def test_body_is_frozen_before_async_work(client, tmp_path):
         ({"exerciseLibraryId": 10}, [10]),
         ({"data": [{"exerciseLibraryItemId": "20"}, {"id": 21}]}, ["20", 21]),
         (42, [42]),
+        ("42", ["42"]),
+        ([42, "43", 42], [42, "43"]),
+        ({"workoutId": 42, "userTags": ["100", "200"]}, [42]),
+        ({"workoutId": 42, "userTags": [100, 200]}, [42]),
+        ({"data": [{"workoutId": 42, "userTags": ["100", 200]}]}, [42]),
+        ({"userTags": ["100", 200]}, []),
         (None, []),
     ],
 )

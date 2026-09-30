@@ -195,7 +195,7 @@ class ExecutionGuard:
         """Persist resource IDs from raw JSON before handlers see the response."""
         ids: list[int | str] = []
 
-        def collect(value: Any) -> None:
+        def collect(value: Any, *, scalar_ids: bool = False) -> None:
             if isinstance(value, dict):
                 for key, item in value.items():
                     if key in (
@@ -211,13 +211,17 @@ class ExecutionGuard:
                         collect(item)
             elif isinstance(value, list):
                 for item in value:
-                    collect(item)
+                    collect(item, scalar_ids=scalar_ids)
             elif (
-                type(value) in (int, str) and str(value).isdigit() and value not in ids
+                scalar_ids
+                and type(value) in (int, str)
+                and str(value).isdigit()
+                and value not in ids
             ):
                 ids.append(value)
 
-        collect(body)
+        # Bare IDs are supported at the response root, not in content/tag arrays.
+        collect(body, scalar_ids=True)
         self._append(
             {"event": "response", **metadata, "status": status, "raw_ids": ids}
         )
