@@ -145,7 +145,14 @@ async def tp_get_profile() -> dict[str, Any]:
             # Coach targeting an athlete: resolve and return that athlete's
             # profile rather than the coach's own account. ensure_athlete_id
             # reuses the shared name/ID resolution + ambiguity handling.
-            if athlete_override.get() is not None:
+            target = athlete_override.get()
+            # personId identifies the authenticated profile; it need not be a
+            # calendar athleteId. Keep this exception local to profile reads.
+            explicit_self = (
+                user_data.get("personId") is not None
+                and target == str(user_data["personId"])
+            )
+            if target is not None and not explicit_self:
                 target_id = await client.ensure_athlete_id()
                 if not target_id:
                     return {
