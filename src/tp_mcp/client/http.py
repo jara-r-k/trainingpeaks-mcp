@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -11,6 +12,7 @@ import httpx
 
 from tp_mcp.auth import get_credential
 from tp_mcp.client.cache import CacheTier, ResponseCache, build_cache_key
+from tp_mcp.client.context import execution_guard
 from tp_mcp.sanitiser import sanitise_result
 
 logger = logging.getLogger("tp-mcp")
@@ -250,6 +252,8 @@ class TPClient:
         Returns:
             APIResponse with token data or error.
         """
+        if guard := execution_guard.get():
+            guard.check("GET", TOKEN_ENDPOINT, None)
         await self._ensure_client()
         await self._throttle()
         assert self._client is not None
@@ -262,15 +266,10 @@ class TPClient:
                 message="No credential stored. Run 'tp-mcp auth' to authenticate.",
             )
 
-        url = f"{self.base_url}{TOKEN_ENDPOINT}"
         headers = self._get_cookie_headers(cred.cookie)
 
         try:
-            response = await self._client.request(
-                method="GET",
-                url=url,
-                headers=headers,
-            )
+            response = await self._send_request("GET", TOKEN_ENDPOINT, headers=headers)
 
             if response.status_code == 401:
                 return APIResponse(
@@ -340,6 +339,25 @@ class TPClient:
 
             return APIResponse(success=True)
 
+    async def _send_request(
+        self, method: str, endpoint: str, **kwargs: Any
+    ) -> httpx.Response:
+        """Send once, durably recording guarded dispatch and raw response IDs."""
+        assert self._client is not None
+        guard = execution_guard.get()
+        metadata = None
+        url = f"{self.base_url}{endpoint}"
+        if guard is not None:
+            metadata = guard.dispatch(method, endpoint, kwargs.get("json"))
+        response = await self._client.request(method=method, url=url, **kwargs)
+        if guard is not None and metadata is not None:
+            try:
+                raw_body = response.json()
+            except ValueError:
+                raw_body = None
+            guard.response(metadata, response.status_code, raw_body)
+        return response
+
     async def _request(
         self,
         method: str,
@@ -360,6 +378,11 @@ class TPClient:
         Returns:
             APIResponse with data or error.
         """
+        guard = execution_guard.get()
+        if guard is not None:
+            method = method.upper()
+            json = deepcopy(json)
+            guard.begin(method, endpoint, json)
         if _is_forbidden(endpoint):
             logger.error("BLOCKED forbidden endpoint: %s %s", method, endpoint)
             return APIResponse(
@@ -380,20 +403,23 @@ class TPClient:
 
         await self._throttle()
 
-        url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
 
         try:
-            response = await self._client.request(
-                method=method,
-                url=url,
+            response = await self._send_request(
+                method,
+                endpoint,
                 headers=headers,
                 json=json,
                 params=params,
             )
 
             # Handle 401 with retry logic
-            if response.status_code == 401 and _retry_on_401:
+            if (
+                response.status_code == 401
+                and _retry_on_401
+                and (guard is None or method == "GET")
+            ):
                 # Token might have expired mid-request, clear and retry once
                 self._token_cache.clear()
                 return await self._request(
@@ -505,6 +531,9 @@ class TPClient:
         Returns:
             APIResponse.
         """
+        if guard := execution_guard.get():
+            guard.check("GET", endpoint, None)
+            cache = False  # Guarded reconciliation must observe the server.
         ttl = self._resolve_ttl(endpoint) if cache else None
         cache_key: str | None = None
 
@@ -601,6 +630,8 @@ class TPClient:
         Returns:
             RawResponse with binary content and headers, or error.
         """
+        if guard := execution_guard.get():
+            guard.check("GET", endpoint, None)
         if _is_forbidden(endpoint):
             logger.error("BLOCKED forbidden endpoint: GET %s", endpoint)
             return RawResponse(
@@ -621,12 +652,11 @@ class TPClient:
 
         await self._throttle()
 
-        url = f"{self.base_url}{endpoint}"
         headers = {**self._get_headers(), "Accept": "*/*"}
 
         try:
-            response = await self._client.request(
-                "GET", url=url, headers=headers, params=params
+            response = await self._send_request(
+                "GET", endpoint, headers=headers, params=params
             )
 
             if response.status_code == 401:
@@ -640,8 +670,8 @@ class TPClient:
                     )
                 await self._throttle()
                 headers = {**self._get_headers(), "Accept": "*/*"}
-                response = await self._client.request(
-                    "GET", url=url, headers=headers, params=params
+                response = await self._send_request(
+                    "GET", endpoint, headers=headers, params=params
                 )
 
         except httpx.TimeoutException:
