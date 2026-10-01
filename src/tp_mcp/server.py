@@ -211,7 +211,7 @@ TOOLS = [
                 "sport": {"type": "string", "enum": list(SPORT_TYPE_MAP.keys())},
                 "title": {"type": "string", "description": "Workout title"},
                 "duration_minutes": {
-                    "type": "integer",
+                    "type": "number",
                     "description": "Planned duration in minutes (optional if structure provided)",
                 },
                 "description": {

@@ -76,13 +76,17 @@ def _prepare_structure_payload(
 
 
 def _validate_structured_workout(structured_workout: dict[str, Any]) -> str | None:
-    """Validate the minimum schema needed to round-trip TP native structures."""
+    """Validate the minimum schema needed to round-trip TP native structures.
+
+    ``primaryIntensityTargetOrRange`` is optional: TrainingPeaks itself stores and returns
+    native structures without it (2,696 of 17,098 captured plan structures, 2017 to 2026),
+    so a structure copied from TP is sent exactly as TP returned it.
+    """
     required = {
         "structure",
         "polyline",
         "primaryLengthMetric",
         "primaryIntensityMetric",
-        "primaryIntensityTargetOrRange",
     }
     missing = required - set(structured_workout.keys())
     if missing:
@@ -395,7 +399,7 @@ async def tp_create_workout(
     date_str: str,
     sport: str,
     title: str,
-    duration_minutes: int | None = None,
+    duration_minutes: float | None = None,
     description: str | None = None,
     distance_km: float | None = None,
     tss_planned: float | None = None,

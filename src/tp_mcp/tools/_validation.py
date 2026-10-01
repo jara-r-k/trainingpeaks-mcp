@@ -57,7 +57,9 @@ class CreateWorkoutInput(BaseModel):
     date: date_type | datetime_type
     sport: str
     title: str = Field(min_length=1, max_length=200)
-    duration_minutes: int | None = Field(default=None, ge=1, le=1440)
+    # Fractional minutes are allowed: TP stores structure-derived times such as 72.4 min
+    # (4,344 s); the handler sends minutes / 60.0, which equals TP's stored hours.
+    duration_minutes: float | None = Field(default=None, gt=0, le=1440)
     description: str | None = Field(default=None, max_length=2000)
     distance_km: float | None = Field(default=None, gt=0, le=1000)
     tss_planned: float | None = Field(default=None, gt=0, le=2000)

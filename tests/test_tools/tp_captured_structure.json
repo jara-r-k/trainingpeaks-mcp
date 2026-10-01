@@ -1,0 +1,382 @@
+{
+ "_doc": "Real TrainingPeaks GET captures (read-only, 1-2 Oct 2026). structure: the native structure of reference card 4971449-2708294597 exactly as TP returned it, without primaryIntensityTargetOrRange. totalTimePlanned: the stored decimal hours of the four reference cards whose planned time is not whole minutes.",
+ "structure": {
+  "polyline": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0.762
+   ],
+   [
+    0.323,
+    0.762
+   ],
+   [
+    0.323,
+    0
+   ],
+   [
+    0.323,
+    1
+   ],
+   [
+    0.372,
+    1
+   ],
+   [
+    0.372,
+    0
+   ],
+   [
+    0.372,
+    0.667
+   ],
+   [
+    0.379,
+    0.667
+   ],
+   [
+    0.379,
+    0
+   ],
+   [
+    0.379,
+    1
+   ],
+   [
+    0.428,
+    1
+   ],
+   [
+    0.428,
+    0
+   ],
+   [
+    0.428,
+    0.667
+   ],
+   [
+    0.435,
+    0.667
+   ],
+   [
+    0.435,
+    0
+   ],
+   [
+    0.435,
+    1
+   ],
+   [
+    0.484,
+    1
+   ],
+   [
+    0.484,
+    0
+   ],
+   [
+    0.484,
+    0.667
+   ],
+   [
+    0.491,
+    0.667
+   ],
+   [
+    0.491,
+    0
+   ],
+   [
+    0.491,
+    0.886
+   ],
+   [
+    0.595,
+    0.886
+   ],
+   [
+    0.595,
+    0
+   ],
+   [
+    0.595,
+    0.667
+   ],
+   [
+    0.616,
+    0.667
+   ],
+   [
+    0.616,
+    0
+   ],
+   [
+    0.616,
+    1
+   ],
+   [
+    0.665,
+    1
+   ],
+   [
+    0.665,
+    0
+   ],
+   [
+    0.665,
+    0.667
+   ],
+   [
+    0.672,
+    0.667
+   ],
+   [
+    0.672,
+    0
+   ],
+   [
+    0.672,
+    1
+   ],
+   [
+    0.721,
+    1
+   ],
+   [
+    0.721,
+    0
+   ],
+   [
+    0.721,
+    0.667
+   ],
+   [
+    0.728,
+    0.667
+   ],
+   [
+    0.728,
+    0
+   ],
+   [
+    0.728,
+    1
+   ],
+   [
+    0.777,
+    1
+   ],
+   [
+    0.777,
+    0
+   ],
+   [
+    0.777,
+    0.667
+   ],
+   [
+    0.784,
+    0.667
+   ],
+   [
+    0.784,
+    0
+   ],
+   [
+    0.784,
+    0.762
+   ],
+   [
+    1,
+    0.762
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "primaryIntensityMetric": "percentOfThresholdHr",
+  "primaryLengthMetric": "duration",
+  "structure": [
+   {
+    "length": {
+     "unit": "repetition",
+     "value": 1
+    },
+    "steps": [
+     {
+      "intensityClass": "warmUp",
+      "length": {
+       "unit": "second",
+       "value": 900
+      },
+      "name": "Warm up",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 80,
+        "minValue": 70
+       }
+      ]
+     }
+    ],
+    "type": "step"
+   },
+   {
+    "length": {
+     "unit": "repetition",
+     "value": 3
+    },
+    "steps": [
+     {
+      "intensityClass": "active",
+      "length": {
+       "unit": "meter",
+       "value": 400,
+       "visualizationDistanceUnit": "meter"
+      },
+      "name": "Threshold / Solid",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 105,
+        "minValue": 95
+       }
+      ]
+     },
+     {
+      "intensityClass": "rest",
+      "length": {
+       "unit": "second",
+       "value": 20
+      },
+      "name": "Rest",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 70,
+        "minValue": 50
+       }
+      ]
+     }
+    ],
+    "type": "repetition"
+   },
+   {
+    "length": {
+     "unit": "repetition",
+     "value": 1
+    },
+    "steps": [
+     {
+      "intensityClass": "active",
+      "length": {
+       "unit": "meter",
+       "value": 800,
+       "visualizationDistanceUnit": "meter"
+      },
+      "name": "Easy",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 93,
+        "minValue": 90
+       }
+      ]
+     },
+     {
+      "intensityClass": "rest",
+      "length": {
+       "unit": "second",
+       "value": 60
+      },
+      "name": "Rest",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 70,
+        "minValue": 50
+       }
+      ]
+     }
+    ],
+    "type": "repetition"
+   },
+   {
+    "length": {
+     "unit": "repetition",
+     "value": 3
+    },
+    "steps": [
+     {
+      "intensityClass": "active",
+      "length": {
+       "unit": "meter",
+       "value": 400,
+       "visualizationDistanceUnit": "meter"
+      },
+      "name": "Threshold / Solid",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 105,
+        "minValue": 95
+       }
+      ]
+     },
+     {
+      "intensityClass": "rest",
+      "length": {
+       "unit": "second",
+       "value": 20
+      },
+      "name": "Rest",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 70,
+        "minValue": 50
+       }
+      ]
+     }
+    ],
+    "type": "repetition"
+   },
+   {
+    "length": {
+     "unit": "repetition",
+     "value": 1
+    },
+    "steps": [
+     {
+      "intensityClass": "coolDown",
+      "length": {
+       "unit": "second",
+       "value": 600
+      },
+      "name": "Cool Down",
+      "openDuration": false,
+      "targets": [
+       {
+        "maxValue": 80,
+        "minValue": 70
+       }
+      ]
+     }
+    ],
+    "type": "step"
+   }
+  ],
+  "visualizationDistanceUnit": "kilometer"
+ },
+ "totalTimePlanned": {
+  "3580763-2710848839": 1.2066666666666668,
+  "4227851-3224483262": 1.3541666666666667,
+  "4860436-3046034174": 0.7727777777777778,
+  "4971449-2708294597": 0.7936111111111112
+ }
+}
