@@ -70,6 +70,7 @@ class CreateWorkoutInput(BaseModel):
     feeling: int | None = Field(default=None, ge=0, le=10)
     rpe: int | None = Field(default=None, ge=1, le=10)
     is_hidden: bool | None = None
+    allow_unplanned: bool = Field(default=False, strict=True)
 
     @field_validator("date", mode="before")
     @classmethod
@@ -94,8 +95,18 @@ class CreateWorkoutInput(BaseModel):
     def check_duration_or_structure(self) -> "CreateWorkoutInput":
         if self.structure is not None and self.structured_workout is not None:
             raise ValueError("Provide only one of structure or structured_workout")
+        if self.allow_unplanned and (
+            self.sport != "Crosstrain" or self.is_hidden is not True
+            or any(value is not None for value in (
+                self.duration_minutes, self.distance_km, self.tss_planned,
+                self.structure, self.structured_workout, self.subtype_id,
+                self.tags, self.feeling, self.rpe,
+            ))
+        ):
+            raise ValueError("allow_unplanned requires a figureless Hidden Crosstrain card")
         if (
-            self.duration_minutes is None
+            not self.allow_unplanned
+            and self.duration_minutes is None
             and self.distance_km is None
             and self.structure is None
             and self.structured_workout is None

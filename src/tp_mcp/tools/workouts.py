@@ -410,6 +410,7 @@ async def tp_create_workout(
     feeling: int | None = None,
     rpe: int | None = None,
     is_hidden: bool | None = None,
+    allow_unplanned: bool = False,
 ) -> dict[str, Any]:
     """Create a planned workout.
 
@@ -428,6 +429,7 @@ async def tp_create_workout(
         feeling: Optional feeling score (0-10).
         rpe: Optional RPE score (1-10).
         is_hidden: Optional to hide the workout to the athlete.
+        allow_unplanned: Opt in to a figureless Hidden Crosstrain card.
 
     Returns:
         Dict with created workout details or error.
@@ -448,12 +450,14 @@ async def tp_create_workout(
             feeling=feeling,
             rpe=rpe,
             is_hidden=is_hidden,
+            allow_unplanned=allow_unplanned,
         )
     except (ValidationError, ValueError) as e:
         msg = format_validation_error(e) if isinstance(e, ValidationError) else str(e)
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
+            "not_dispatched": True,
             "message": msg,
         }
 
@@ -464,6 +468,7 @@ async def tp_create_workout(
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
+            "not_dispatched": True,
             "message": structure_payload.error,
         }
     raw_structure_payload, raw_structure_error = _encode_structured_workout(
@@ -473,6 +478,7 @@ async def tp_create_workout(
         return {
             "isError": True,
             "error_code": "VALIDATION_ERROR",
+            "not_dispatched": True,
             "message": raw_structure_error,
         }
 
