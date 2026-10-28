@@ -201,8 +201,17 @@ async def tp_create_library(name: str) -> dict[str, Any]:
                 "message": "Could not get athlete ID. Re-authenticate.",
             }
 
+        user_data = await client._get_user_data()
+        owner_id = user_data.get("personId") if isinstance(user_data, dict) else None
+        if type(owner_id) is not int or owner_id <= 0:
+            return {
+                "isError": True,
+                "error_code": "AUTH_INVALID",
+                "message": "Could not get owner personId. Re-authenticate.",
+            }
+
         endpoint = "/exerciselibrary/v1/libraries"
-        payload = {"name": name.strip()}
+        payload = {"libraryName": name.strip(), "ownerId": owner_id}
         response = await client.post(endpoint, json=payload)
 
         if response.is_error:
@@ -283,7 +292,7 @@ async def tp_create_library_item(
     Args:
         library_id: Library ID.
         name: Template name.
-        sport_family_id: Sport family ID.
+        sport_family_id: Legacy sport family ID (accepted but not sent).
         sport_type_id: Sport type ID.
         duration_hours: Optional duration in hours.
         distance_m: Optional planned distance in metres.
@@ -330,8 +339,7 @@ async def tp_create_library_item(
         payload: dict[str, Any] = {
             "exerciseLibraryId": lib_validated.workout_id,
             "itemName": name.strip(),
-            "workoutTypeFamilyId": sport_family_id,
-            "workoutTypeValueId": sport_type_id,
+            "workoutTypeId": sport_type_id,
         }
         if duration_hours is not None:
             payload["totalTimePlanned"] = duration_hours

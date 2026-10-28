@@ -121,20 +121,37 @@ class TestGetLibraryItems:
 
 class TestCreateLibrary:
     @pytest.mark.asyncio
-    async def test_create_sends_name(self):
+    async def test_create_sends_library_name_and_person_id(self):
         response = APIResponse(success=True, data={"exerciseLibraryId": 3})
         with patch("tp_mcp.tools.library.TPClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance._get_user_data = AsyncMock(return_value={"personId": 456})
             mock_instance.post = AsyncMock(return_value=response)
             mock_client.return_value.__aenter__.return_value = mock_instance
 
-            result = await tp_create_library("Race Prep")
+            result = await tp_create_library("  Race Prep  ")
 
         assert result["success"] is True
         assert result["library_id"] == 3
         payload = mock_instance.post.call_args[1]["json"]
-        assert payload["name"] == "Race Prep"
+        assert payload == {"libraryName": "Race Prep", "ownerId": 456}
+        mock_instance._get_user_data.assert_awaited_once()
+
+    @pytest.mark.parametrize("user_data", [None, {}, {"personId": None}, {"personId": 0}])
+    @pytest.mark.asyncio
+    async def test_create_refuses_without_person_id(self, user_data):
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance._get_user_data = AsyncMock(return_value=user_data)
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_create_library("Race Prep")
+
+        assert result["error_code"] == "AUTH_INVALID"
+        assert "personId" in result["message"]
+        mock_instance.post.assert_not_awaited()
 
 
 class TestDeleteLibrary:
@@ -183,7 +200,7 @@ class TestCreateLibraryItem:
             result = await tp_create_library_item(
                 library_id="1", name="Tempo",
                 sport_family_id=2, sport_type_id=3,
-                structure=structure,
+                duration_hours=0.75, tss=50, description="Synthetic intervals", structure=structure,
             )
 
         assert result["success"] is True
@@ -191,6 +208,15 @@ class TestCreateLibraryItem:
         assert "distancePlanned" not in payload
         # Structure should be nested object, NOT JSON string
         assert isinstance(payload["structure"], dict)
+        assert payload == {
+            "exerciseLibraryId": 1,
+            "itemName": "Tempo",
+            "workoutTypeId": 3,
+            "totalTimePlanned": 0.75,
+            "tssPlanned": 50,
+            "description": "Synthetic intervals",
+            "structure": structure,
+        }
 
     @pytest.mark.parametrize("distance_m", [0, -1])
     @pytest.mark.asyncio
