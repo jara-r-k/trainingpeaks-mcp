@@ -1049,6 +1049,7 @@ TOOLS = [
                     "type": "object",
                     "description": "Interval structure (nested object)",
                 },
+                "coach_comments": {"type": "string", "description": "Optional coach comments"},
             },
             "required": ["library_id", "name", "sport_family_id", "sport_type_id"],
         },
@@ -1631,6 +1632,7 @@ async def _h_create_lib_item(args):
         tss=args.get("tss"),
         description=args.get("description"),
         structure=args.get("structure"),
+        coach_comments=args.get("coach_comments"),
     )
 
 

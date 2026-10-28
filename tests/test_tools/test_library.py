@@ -170,6 +170,52 @@ class TestDeleteLibrary:
 
 
 class TestCreateLibraryItem:
+    @pytest.mark.parametrize(
+        "optional",
+        [
+            {},
+            {"coach_comments": None},
+            {"coach_comments": ""},
+            {"coach_comments": " \t\n"},
+            {"coach_comments": "  Keep café efforts controlled. 😀\nFinish easy.  "},
+        ],
+    )
+    async def test_create_coach_comments_exact_body(self, optional):
+        response = APIResponse(success=True, data={"exerciseLibraryItemId": 20})
+        with patch("tp_mcp.tools.library.TPClient") as mock_client:
+            client = AsyncMock()
+            client.ensure_athlete_id.return_value = 123
+            client.post.return_value = response
+            mock_client.return_value.__aenter__.return_value = client
+            result = await tp_create_library_item(
+                library_id="1", name="Synthetic swim", sport_family_id=1, sport_type_id=1, **optional
+            )
+
+        assert result["success"] is True
+        expected = {"exerciseLibraryId": 1, "itemName": "Synthetic swim", "workoutTypeId": 1}
+        if optional.get("coach_comments"):
+            expected["coachComments"] = optional["coach_comments"]
+        client.post.assert_awaited_once_with("/exerciselibrary/v1/libraries/1/items", json=expected)
+
+    async def test_create_coach_comments_schema_and_dispatch(self):
+        tool = next(tool for tool in await list_tools() if tool.name == "tp_create_library_item")
+        assert tool.inputSchema["properties"]["coach_comments"]["type"] == "string"
+        assert "coach_comments" not in tool.inputSchema["required"]
+        comments = "  Keep the last effort controlled.\nFinish easy.  "
+        with patch("tp_mcp.server.tp_create_library_item", new_callable=AsyncMock) as create_item:
+            create_item.return_value = {"success": True}
+            await call_tool(
+                "tp_create_library_item",
+                {
+                    "library_id": "1",
+                    "name": "Synthetic swim",
+                    "sport_family_id": 1,
+                    "sport_type_id": 1,
+                    "coach_comments": comments,
+                },
+            )
+        assert create_item.await_args.kwargs["coach_comments"] == comments
+
     @pytest.mark.asyncio
     async def test_create_includes_distance_planned(self):
         response = APIResponse(success=True, data={"exerciseLibraryItemId": 20})

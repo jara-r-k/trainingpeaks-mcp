@@ -286,6 +286,7 @@ async def tp_create_library_item(
     description: str | None = None,
     structure: dict[str, Any] | None = None,
     distance_m: float | None = None,
+    coach_comments: str | None = None,
 ) -> dict[str, Any]:
     """Save a workout template to a library.
 
@@ -298,6 +299,7 @@ async def tp_create_library_item(
         distance_m: Optional planned distance in metres.
         tss: Optional planned TSS.
         description: Optional description.
+        coach_comments: Optional coach comments, preserved verbatim.
         structure: Optional interval structure (nested object, NOT string).
 
     Returns:
@@ -349,6 +351,8 @@ async def tp_create_library_item(
             payload["tssPlanned"] = tss
         if description:
             payload["description"] = description
+        if coach_comments:
+            payload["coachComments"] = coach_comments
         if structure is not None:
             # Library items use nested object, NOT double-serialised string
             payload["structure"] = structure
