@@ -105,6 +105,11 @@ class TestListTools:
             "tp_get_training_plan",
             "tp_get_training_plan_workouts",
             "tp_copy_plan_workout",
+            "tp_create_training_plan",
+            "tp_add_plan_workout_from_library",
+            "tp_create_plan_workout",
+            "tp_delete_plan_workout",
+            "tp_delete_training_plan",
         }
         assert v2_tools.issubset(names)
         # Bulk plan apply writes visible workouts; it must not be exposed.

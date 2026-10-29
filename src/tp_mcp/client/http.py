@@ -12,7 +12,8 @@ import httpx
 
 from tp_mcp.auth import get_credential
 from tp_mcp.client.cache import CacheTier, ResponseCache, build_cache_key
-from tp_mcp.client.context import execution_guard
+from tp_mcp.client.context import execution_guard, is_plan_write
+from tp_mcp.client.paths import normalise_path
 from tp_mcp.sanitiser import sanitise_result
 
 logger = logging.getLogger("tp-mcp")
@@ -72,11 +73,22 @@ class ErrorCode(Enum):
 # then DELETED the template's 139 workouts, emptying a published Plan-Store plan.
 # The connector applies plans with a SYNTHETIC copy (tp_apply_training_plan), which
 # never calls this command, so blocking it loses no functionality.
-_FORBIDDEN_ENDPOINTS: tuple[str, ...] = ("/plans/v1/commands/applyplan",)
+#
+# /plans/v1/commands/copyplan copies a whole plan, and product/ is the Plan-Store
+# Product API (the web app may publish a plan for sale after a create): draft-plan
+# writes never need either. Match the normalised path, excluding query/fragment,
+# removing dot segments and decoding escapes a server might interpret. A path
+# still changing after 5 decodes is refused outright.
+_FORBIDDEN_ENDPOINTS: tuple[str, ...] = (
+    "/plans/v1/commands/applyplan",
+    "/plans/v1/commands/copyplan",
+    "product/",
+)
 
 
 def _is_forbidden(endpoint: str) -> bool:
-    return any(bad in endpoint for bad in _FORBIDDEN_ENDPOINTS)
+    path = normalise_path(endpoint)
+    return path is None or any(bad in path for bad in _FORBIDDEN_ENDPOINTS)
 
 
 @dataclass
@@ -388,9 +400,12 @@ class TPClient:
             return APIResponse(
                 success=False,
                 error_code=ErrorCode.FORBIDDEN_ENDPOINT,
-                message=(f"Endpoint {endpoint} is disabled in this connector "
-                         "(destructive plan operation — has emptied a published plan). "
-                         "Copy plan cards one at a time with tp_copy_plan_workout instead."),
+                message=(
+                    f"Endpoint {endpoint} is disabled in this connector "
+                    "(blocked plan or Product operation; applyplan has emptied a "
+                    "published plan). Copy plan cards one at a time with "
+                    "tp_copy_plan_workout instead."
+                ),
             )
 
         await self._ensure_client()
@@ -414,11 +429,15 @@ class TPClient:
                 params=params,
             )
 
-            # Handle 401 with retry logic
+            # Handle 401 with retry logic. Guarded writes and plan writes are never
+            # resent: the first request may already have reached the server.
             if (
                 response.status_code == 401
                 and _retry_on_401
-                and (guard is None or method == "GET")
+                and (
+                    method == "GET"
+                    or (guard is None and not is_plan_write(method, endpoint))
+                )
             ):
                 # Token might have expired mid-request, clear and retry once
                 self._token_cache.clear()

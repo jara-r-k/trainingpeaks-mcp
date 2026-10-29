@@ -18,6 +18,7 @@ from tp_mcp.client.context import athlete_override
 from tp_mcp.sanitiser import sanitise_result
 from tp_mcp.tools import (
     tp_add_note_comment,
+    tp_add_plan_workout_from_library,
     tp_add_workout_comment,
     tp_analyze_workout,
     tp_auth_status,
@@ -29,12 +30,16 @@ from tp_mcp.tools import (
     tp_create_library,
     tp_create_library_item,
     tp_create_note,
+    tp_create_plan_workout,
+    tp_create_training_plan,
     tp_create_workout,
     tp_delete_availability,
     tp_delete_equipment,
     tp_delete_event,
     tp_delete_library,
     tp_delete_note,
+    tp_delete_plan_workout,
+    tp_delete_training_plan,
     tp_delete_workout,
     tp_delete_workout_file,
     tp_download_workout_file,
@@ -599,6 +604,76 @@ TOOLS = [
                 "is_hidden": {"type": "boolean", "description": "Hide from athlete (default true)", "default": True},
             },
             "required": ["plan_id", "plan_workout_id", "target_date"],
+        },
+    ),
+    # Draft-plan writes: each runs only inside an HC guarded execution (refused
+    # otherwise), sends one write, never retries, and re-reads to report the outcome.
+    Tool(
+        name="tp_create_training_plan",
+        description="Create ONE empty draft training plan. Title must be '2.7 week N drafts' "
+                    "or 'HC scratch probe YYYY-MM-DD' and not already exist. HC guarded "
+                    "execution only. Returns created true/false/null; never re-create on true or null.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "'2.7 week N drafts' or 'HC scratch probe YYYY-MM-DD'"},
+            },
+            "required": ["title"],
+        },
+    ),
+    Tool(
+        name="tp_add_plan_workout_from_library",
+        description="Drop ONE library item onto a draft training plan's date (the web app's drag). "
+                    "HC guarded execution only. Re-reads the plan day and returns created "
+                    "true/false/null; never re-add on true or null.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Draft plan id"},
+                "library_item_id": {"type": "integer", "description": "Library item id"},
+                "target_date": {"type": "string", "description": "Plan date (YYYY-MM-DD)"},
+            },
+            "required": ["plan_id", "library_item_id", "target_date"],
+        },
+    ),
+    Tool(
+        name="tp_create_plan_workout",
+        description="Create ONE workout directly in a draft training plan on a date. The workout "
+                    "uses TP field names (workoutTypeValueId, title, description, coachComments, "
+                    "totalTimePlanned hours, distancePlanned metres, tssPlanned, ifPlanned, "
+                    "workoutSubTypeId, structure). HC guarded execution only. Re-reads the plan "
+                    "day and returns created true/false/null; never re-create on true or null.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Draft plan id"},
+                "target_date": {"type": "string", "description": "Plan date (YYYY-MM-DD)"},
+                "workout": {"type": "object", "description": "Planned fields, TP names; unknown keys refused"},
+            },
+            "required": ["plan_id", "target_date", "workout"],
+        },
+    ),
+    Tool(
+        name="tp_delete_plan_workout",
+        description="Delete ONE workout from a draft or scratch training plan. HC guarded "
+                    "execution only. Re-reads the plan and returns deleted true/false/null.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "Draft plan id"},
+                "workout_id": {"type": "integer", "description": "Plan workout id"},
+            },
+            "required": ["plan_id", "workout_id"],
+        },
+    ),
+    Tool(
+        name="tp_delete_training_plan",
+        description="Delete ONE draft or scratch training plan. HC guarded execution only. "
+                    "Re-lists the plans and returns deleted true/false/null.",
+        inputSchema={
+            "type": "object",
+            "properties": {"plan_id": {"type": "integer", "description": "Draft plan id"}},
+            "required": ["plan_id"],
         },
     ),
     # tp_apply_training_plan is deliberately NOT registered in this fork: it bulk-writes
@@ -1352,6 +1427,29 @@ async def _h_copy_plan_workout(args):
         target_date=args["target_date"],
         is_hidden=args.get("is_hidden", True),
     )
+
+
+@_handler("tp_create_training_plan")
+async def _h_create_training_plan(args): return await tp_create_training_plan(title=args["title"])
+
+@_handler("tp_add_plan_workout_from_library")
+async def _h_add_plan_workout_from_library(args):
+    return await tp_add_plan_workout_from_library(
+        plan_id=args["plan_id"], library_item_id=args["library_item_id"], target_date=args["target_date"],
+    )
+
+@_handler("tp_create_plan_workout")
+async def _h_create_plan_workout(args):
+    return await tp_create_plan_workout(
+        plan_id=args["plan_id"], target_date=args["target_date"], workout=args["workout"],
+    )
+
+@_handler("tp_delete_plan_workout")
+async def _h_delete_plan_workout(args):
+    return await tp_delete_plan_workout(plan_id=args["plan_id"], workout_id=args["workout_id"])
+
+@_handler("tp_delete_training_plan")
+async def _h_delete_training_plan(args): return await tp_delete_training_plan(plan_id=args["plan_id"])
 
 
 # --- Athlete Settings ---

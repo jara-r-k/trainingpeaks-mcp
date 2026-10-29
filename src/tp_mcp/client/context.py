@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tp_mcp.client.paths import normalise_path
+
 athlete_override: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "athlete_override", default=None
 )
@@ -35,6 +37,21 @@ JSONBody = dict[str, Any] | list[Any] | None
 
 class GuardViolationError(RuntimeError):
     """A guarded request is refused before it can reach the transport."""
+
+
+def is_plan_write(method: str, path: str) -> bool:
+    """Plan-store writes dispatch at most once: never retried, never replayed."""
+    normalised = normalise_path(path)
+    return method.upper() != "GET" and (
+        normalised is None or normalised.startswith("/plans/")
+    )
+
+
+def _one_dispatch(method: str, path: object) -> bool:
+    """POSTs, and PUT/DELETE on plan paths; a missing path cannot prove otherwise."""
+    return method == "POST" or (
+        method != "GET" and (not isinstance(path, str) or is_plan_write(method, path))
+    )
 
 
 class ExecutionGuard:
@@ -64,7 +81,7 @@ class ExecutionGuard:
             not path.startswith("/")
             or path.startswith("//")
             or any(char in path for char in ("%", "?", "#", "\\"))
-            or any(part in (".", "..") for part in path.split("/"))
+            or normalise_path(path) != path.lower()
             or any(ord(char) <= 32 for char in path)
         ):
             raise GuardViolationError(f"Non-canonical guarded path: {path!r}")
@@ -84,8 +101,8 @@ class ExecutionGuard:
                 "A current intent is required for guarded mutations."
             )
 
-    def _post_state(self) -> tuple[int, bool]:
-        """Restore POST attempts and dispatches, refusing damaged journals."""
+    def _write_state(self) -> tuple[int, bool]:
+        """Restore one-dispatch write attempts and dispatches, refusing damaged journals."""
         attempts = 0
         dispatched = False
         # ponytail: scan the run journal; index it if large runs make this costly.
@@ -104,7 +121,7 @@ class ExecutionGuard:
                     if event["event"] in ("attempt", "dispatched"):
                         # Missing method cannot safely prove this was only a GET.
                         method = event.get("method", "POST")
-                        if method == "POST":
+                        if _one_dispatch(method, event.get("path")):
                             attempts += event["event"] == "attempt"
                             dispatched |= event["event"] == "dispatched"
         except FileNotFoundError:
@@ -139,20 +156,20 @@ class ExecutionGuard:
             raise
 
     def begin(self, method: str, path: str, body: JSONBody) -> None:
-        """Count POST attempts, including refused/pre-auth attempts, before work."""
-        if method == "POST":
+        """Count one-dispatch write attempts, including refused/pre-auth ones, before work."""
+        if _one_dispatch(method, path):
             if not current_intent.get():
                 raise GuardViolationError(
-                    "A current intent is required for guarded POSTs."
+                    f"A current intent is required for guarded {method}s."
                 )
-            attempts, dispatched = self._post_state()
+            attempts, dispatched = self._write_state()
             if dispatched:
                 raise GuardViolationError(
-                    "This intent already dispatched a POST; reconcile, never replay."
+                    "This intent already dispatched a write; reconcile, never replay."
                 )
             if attempts >= 2:
                 raise GuardViolationError(
-                    "POST attempt ceiling of 2 reached for this intent."
+                    "Write attempt ceiling of 2 reached for this intent."
                 )
             self._append(
                 {
@@ -168,15 +185,15 @@ class ExecutionGuard:
     def dispatch(self, method: str, path: str, body: JSONBody) -> dict[str, Any]:
         """Persist dispatch immediately before send; recheck after async waits."""
         self.check(method, path, body)
-        if method == "POST":
-            attempts, dispatched = self._post_state()
+        if _one_dispatch(method, path):
+            attempts, dispatched = self._write_state()
             if dispatched:
                 raise GuardViolationError(
-                    "This intent already dispatched a POST; reconcile, never replay."
+                    "This intent already dispatched a write; reconcile, never replay."
                 )
             if not 1 <= attempts <= 2:
                 raise GuardViolationError(
-                    "Guarded POST requires a recorded attempt within the ceiling of 2."
+                    f"Guarded {method} requires a recorded attempt within the ceiling of 2."
                 )
         metadata = {
             "intent_id": current_intent.get(),
@@ -204,6 +221,7 @@ class ExecutionGuard:
                         "exerciseLibraryId",
                         "exerciseLibraryItemId",
                         "noteId",
+                        "planId",
                     ):
                         if type(item) in (int, str) and item not in ids:
                             ids.append(item)

@@ -13,19 +13,27 @@ via the proven create endpoint (POST /fitness/v6/athletes/{id}/workouts) — the
 is no black-box-discoverable native "apply" endpoint, so this is a faithful
 client-side copy (structure/description/TSS preserved; TP does not record it as a
 linked plan application).
+
+Draft-plan writes (HC guarded execution only; one write each, never retried):
+  POST   /plans/v1/plans                                          → create a plan
+  POST   /plans/v1/plans/{id}/commands/addworkoutfromlibraryitem  → library item onto a day
+  POST   /plans/v1/plans/{id}/workouts                            → create a plan workout
+  DELETE /plans/v1/plans/{id}/workouts/{workoutId}                → delete a plan workout
+  DELETE /plans/v1/plans/{id}                                     → delete a plan
 """
 
 import json
 import logging
+import re
 from datetime import date as date_type
 from datetime import timedelta
 from math import isclose
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tp_mcp.client import TPClient
-from tp_mcp.client.context import athlete_override
+from tp_mcp.client.context import GuardViolationError, athlete_override, require_guard
 from tp_mcp.tools._validation import format_validation_error
 
 logger = logging.getLogger("tp-mcp")
@@ -200,16 +208,18 @@ async def tp_get_training_plan_workouts(plan_id: int | str, week: int | None = N
         return {"plan_id": v.plan_id, "week": week, "workouts": out, "count": len(out)}
 
 
-def _plan_workout_payload(w: dict[str, Any], athlete_id: int, day: date_type) -> dict[str, Any]:
-    """Create-endpoint payload that copies one plan workout's planned fields to ``day``."""
+def _plan_workout_payload(w: dict[str, Any], athlete_id: int | None, day: date_type) -> dict[str, Any]:
+    """Create-endpoint payload that copies one plan workout's planned fields to ``day``
+    (without ``athleteId`` when ``athlete_id`` is None: a plan's own workout)."""
     tid = w.get("workoutTypeValueId")
     payload: dict[str, Any] = {
-        "athleteId": athlete_id,
         "workoutDay": f"{day.isoformat()}T00:00:00",
         "workoutTypeFamilyId": tid,   # family == value for standard sports
         "workoutTypeValueId": tid,
         "title": (w.get("title") or "Workout").strip(),
     }
+    if athlete_id is not None:
+        payload["athleteId"] = athlete_id
     for field in ("totalTimePlanned", "distancePlanned", "tssPlanned", "ifPlanned", "workoutSubTypeId"):
         if w.get(field) is not None:
             payload[field] = w[field]
@@ -446,3 +456,324 @@ async def tp_apply_training_plan(plan_id: int | str, start_date: str) -> dict[st
         if first_error:
             result["first_error"] = first_error[:160]
         return result
+
+
+# --- Draft-plan writes (HC guarded execution only) ----------------------------
+# Each tool calls require_guard() first and sends exactly one write, never retried
+# (the client never resends a plan write, even on 401). The guard's allowlist names
+# the exact method and path; reads before and after the write give created/deleted
+# as True, False or None, and the caller never re-sends on True or None.
+
+# The only plans these tools create or delete: the coach's weekly drafts and probes.
+_DRAFT_TITLE = re.compile(r"(?:2\.7 week \d{1,2} drafts|HC scratch probe \d{4}-\d{2}-\d{2})", re.ASCII)
+# A write that failed like this may have reached the server with no usable answer
+# (a 401, or a timeout), so an empty re-read cannot prove nothing was created.
+_MAYBE_SENT = ("AUTH_EXPIRED", "NETWORK_ERROR")
+
+
+def _is_draft_title(title: object) -> bool:
+    return isinstance(title, str) and 1 <= len(title) <= 100 and _DRAFT_TITLE.fullmatch(title) is not None
+
+
+def _guard_error() -> dict[str, Any] | None:
+    """Refuse to run outside an HC guarded execution."""
+    try:
+        require_guard()
+    except GuardViolationError as e:
+        return _err("GUARD_REQUIRED", str(e))
+    return None
+
+
+def _validation_err(e: Exception) -> dict[str, Any]:
+    return _err("VALIDATION_ERROR", format_validation_error(e) if isinstance(e, ValidationError) else str(e))
+
+
+async def _list_plans(client: TPClient) -> list[dict[str, Any]] | None:
+    r = await client.get("/plans/v1/plans", cache=False)
+    return r.data if not r.is_error and isinstance(r.data, list) else None
+
+
+def _plan_title(p: dict[str, Any]) -> str:
+    return (p.get("title") or "").strip()
+
+
+def _created_result(
+    created: bool | None, post_error: dict[str, Any] | None, fields: dict[str, Any], ambiguous: bool = False,
+) -> dict[str, Any]:
+    if post_error and created is not True:
+        note = (
+            "nothing was created" if created is False
+            else "unknown whether it was created; do NOT re-send, check first"
+        )
+        return {**post_error, "created": created, **fields, "message": f"{post_error.get('message')} ({note})"}
+    result: dict[str, Any] = {"success": created is True, "created": created, **fields}
+    if created is None:
+        result["message"] = (
+            "New items could not be uniquely matched to this write" if ambiguous else "Not visible on re-read yet"
+        ) + "; do NOT re-send, check first."
+    return result
+
+
+async def tp_create_training_plan(title: str) -> dict[str, Any]:
+    """Create ONE empty, non-dynamic draft training plan titled ``title``.
+
+    Only '2.7 week N drafts' and 'HC scratch probe YYYY-MM-DD' titles, and never one
+    that already exists. Sends ``{"title", "isDynamic": false}`` only: no folder, no
+    Product API. Lists the plans before and after the single POST: ``created`` is True
+    when exactly one plan with the title now exists and it is the POST's id (or the
+    only new one), False only when the POST failed and no such plan exists, else None.
+    """
+    if not _is_draft_title(title):
+        return _err("VALIDATION_ERROR", "Title must be '2.7 week N drafts' or 'HC scratch probe YYYY-MM-DD'.")
+    if refused := _guard_error():
+        return refused
+    async with TPClient() as client:
+        before = await _list_plans(client)
+        if before is None:
+            return _err("API_ERROR", "Could not list plans before creating; nothing was created.")
+        if any(_plan_title(p) == title for p in before):
+            return _err("VALIDATION_ERROR", f"A plan titled {title!r} already exists; nothing was created.")
+        before_ids = {p.get("planId") for p in before}
+
+        resp = await client.post("/plans/v1/plans", json={"title": title, "isDynamic": False})
+        post_error = _api_err(resp) if resp.is_error else None
+        new_id = resp.data.get("planId") if isinstance(resp.data, dict) else None
+
+        after = await _list_plans(client)
+        same = [p for p in after or [] if _plan_title(p) == title]
+        saved = same[0] if (
+            len(same) == 1 and same[0].get("planId") not in before_ids
+            and (not new_id or same[0].get("planId") == new_id)
+        ) else None
+        created: bool | None
+        if saved is not None:
+            created = True
+        elif after is not None and not same and post_error and post_error["error_code"] not in _MAYBE_SENT:
+            created = False
+        else:
+            created = None
+        fields = {"plan_id": saved.get("planId") if saved else new_id, "title": title}
+        return _created_result(created, post_error, fields, ambiguous=bool(same) and saved is None)
+
+
+async def _write_plan_day(
+    client: TPClient, plan_id: int, day: date_type, endpoint: str, body: dict[str, Any], match: Any,
+) -> dict[str, Any]:
+    """POST once between two uncached reads of the plan day, diffed as tp_copy_plan_workout
+    diffs an athlete day. ``match`` picks the new card when the POST returns no id; with
+    None, no card is adopted without an id. False only when the POST failed and nothing
+    new is on the day."""
+    day_endpoint = f"/plans/v1/plans/{plan_id}/workouts/{day.isoformat()}/{day.isoformat()}"
+
+    async def day_workouts() -> list[dict[str, Any]] | None:
+        r = await client.get(day_endpoint, cache=False)
+        return r.data if not r.is_error and isinstance(r.data, list) else None
+
+    before = await day_workouts()
+    if before is None:
+        return _err("API_ERROR", "Could not read the plan day before writing; nothing was created.")
+    before_ids = {w.get("workoutId") for w in before}
+
+    resp = await client.post(endpoint, json=body)
+    post_error = _api_err(resp) if resp.is_error else None
+    new_id = resp.data.get("workoutId") if isinstance(resp.data, dict) else None
+
+    after = await day_workouts()
+    added = [w for w in (after or []) if w.get("workoutId") not in before_ids]
+    if new_id:
+        # A known id is authoritative: never adopt some other same-titled card.
+        saved = next((w for w in added if w.get("workoutId") == new_id), None)
+    else:
+        matches = [w for w in added if match is not None and match(w)]
+        saved = matches[0] if len(matches) == 1 else None
+    created: bool | None
+    if saved is not None:
+        created = True
+    elif after is not None and not added and post_error and post_error["error_code"] not in _MAYBE_SENT:
+        created = False
+    else:
+        created = None
+    fields = {"workout_id": saved.get("workoutId") if saved else new_id, "plan_id": plan_id, "date": day.isoformat()}
+    return _created_result(created, post_error, fields, ambiguous=bool(added) and saved is None)
+
+
+class _AddFromLibraryInput(BaseModel):
+    plan_id: int = Field(gt=0)
+    library_item_id: int = Field(gt=0)
+    target_date: date_type
+
+
+async def tp_add_plan_workout_from_library(
+    plan_id: int | str, library_item_id: int | str, target_date: str,
+) -> dict[str, Any]:
+    """Drop ONE library item onto a draft plan's ``target_date`` (the web app's drag).
+
+    Snapshots the plan day before the single POST and diffs it after. The item's own
+    title, sport and time are not read, so a new card is only adopted by the workoutId
+    the POST returns; without one, ``created`` is None whenever a card appears.
+    """
+    try:
+        v = _AddFromLibraryInput(
+            plan_id=plan_id, library_item_id=library_item_id, target_date=target_date,  # type: ignore[arg-type]
+        )
+    except (ValidationError, ValueError) as e:
+        return _validation_err(e)
+    if refused := _guard_error():
+        return refused
+    body = {
+        "planId": v.plan_id,
+        "exerciseLibraryItemId": v.library_item_id,
+        "workoutDateTime": f"{v.target_date.isoformat()}T00:00:00",
+    }
+    async with TPClient() as client:
+        endpoint = f"/plans/v1/plans/{v.plan_id}/commands/addworkoutfromlibraryitem"
+        result = await _write_plan_day(client, v.plan_id, v.target_date, endpoint, body, None)
+    return {**result, "library_item_id": v.library_item_id}
+
+
+class _PlanWorkoutFields(BaseModel):
+    """A new plan workout's planned fields, keyed by TP's names; unknown keys are refused."""
+
+    model_config = ConfigDict(extra="forbid")
+    type_id: int = Field(alias="workoutTypeValueId")
+    title: str
+    description: str | None = None
+    coach_comments: str | None = Field(default=None, alias="coachComments")
+    time_h: float | None = Field(default=None, alias="totalTimePlanned", ge=0, allow_inf_nan=False)
+    distance_m: float | None = Field(default=None, alias="distancePlanned", ge=0, allow_inf_nan=False)
+    tss: float | None = Field(default=None, alias="tssPlanned", ge=0, allow_inf_nan=False)
+    intensity: float | None = Field(default=None, alias="ifPlanned", ge=0, allow_inf_nan=False)
+    sub_type_id: int | None = Field(default=None, alias="workoutSubTypeId")
+    structure: dict[str, Any] | str | None = None
+
+    @field_validator("type_id")
+    @classmethod
+    def _known_sport(cls, v: int) -> int:
+        if v not in _SPORT_BY_TYPE:
+            raise ValueError(f"unknown workoutTypeValueId {v}")
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def _has_title(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("title must not be blank")
+        return v
+
+    @field_validator("structure")
+    @classmethod
+    def _json_object(cls, v: Any) -> Any:
+        if isinstance(v, str) and not isinstance(json.loads(v), dict):
+            raise ValueError("structure must be a JSON object")
+        return v
+
+
+class _CreatePlanWorkoutInput(BaseModel):
+    plan_id: int = Field(gt=0)
+    target_date: date_type
+    workout: _PlanWorkoutFields
+
+
+async def tp_create_plan_workout(
+    plan_id: int | str, target_date: str, workout: dict[str, Any],
+) -> dict[str, Any]:
+    """Create ONE workout directly in a draft plan on ``target_date``.
+
+    ``workout`` uses TP's field names (workoutTypeValueId, title, description,
+    coachComments, totalTimePlanned, distancePlanned, tssPlanned, ifPlanned,
+    workoutSubTypeId, structure) and is sent as a calendar create sends it (workoutId 0,
+    coach comments verbatim, structure as a JSON string). Snapshots the plan day before
+    the single POST and diffs it after; without a returned id a new card must match
+    title, sport, planned time, distance and structure.
+    """
+    try:
+        v = _CreatePlanWorkoutInput(plan_id=plan_id, target_date=target_date, workout=workout)  # type: ignore[arg-type]
+    except (ValidationError, ValueError) as e:
+        return _validation_err(e)
+    if refused := _guard_error():
+        return refused
+    fields = v.workout.model_dump(by_alias=True, exclude_none=True)
+    body = {"workoutId": 0, **_plan_workout_payload(fields, None, v.target_date)}
+    async with TPClient() as client:
+        endpoint = f"/plans/v1/plans/{v.plan_id}/workouts"
+        result = await _write_plan_day(
+            client, v.plan_id, v.target_date, endpoint, body, lambda w: _matches_plan_workout(w, body),
+        )
+    return {**result, "title": body["title"]}
+
+
+def _not_draft(plans: list[dict[str, Any]], plan_id: int) -> dict[str, Any] | None:
+    """Refuse a delete unless the plan is listed with a draft or scratch title."""
+    plan = next((p for p in plans if p.get("planId") == plan_id), None)
+    if plan is None:
+        return _err("NOT_FOUND", f"Plan {plan_id} is not in your plans; nothing was deleted.")
+    if not _is_draft_title(plan.get("title")):
+        return _err("VALIDATION_ERROR", f"Plan {plan_id} is not a draft or scratch plan; nothing was deleted.")
+    return None
+
+
+def _deleted_result(deleted: bool | None, resp: Any, fields: dict[str, Any]) -> dict[str, Any]:
+    if resp.is_error and deleted is not True:
+        error = _api_err(resp)
+        if error["error_code"] in _MAYBE_SENT:
+            deleted = None  # The DELETE may still land: never report a retryable False.
+        note = "still there" if deleted is False else "unknown whether it was deleted; do NOT re-send, check first"
+        return {**error, "deleted": deleted, **fields, "message": f"{error.get('message')} ({note})"}
+    result: dict[str, Any] = {"success": deleted is True, "deleted": deleted, **fields}
+    if deleted is None:
+        result["message"] = "Could not re-read to confirm the delete; do NOT re-send, check first."
+    elif not deleted:
+        result["message"] = "Still there after the delete."
+    return result
+
+
+class _DeletePlanWorkoutInput(BaseModel):
+    plan_id: int = Field(gt=0)
+    workout_id: int = Field(gt=0)
+
+
+async def tp_delete_plan_workout(plan_id: int | str, workout_id: int | str) -> dict[str, Any]:
+    """Delete ONE workout from a draft or scratch plan, then re-read the plan:
+    ``deleted`` is True (gone), False (still there) or None (unreadable)."""
+    try:
+        v = _DeletePlanWorkoutInput(plan_id=plan_id, workout_id=workout_id)  # type: ignore[arg-type]
+    except (ValidationError, ValueError) as e:
+        return _validation_err(e)
+    if refused := _guard_error():
+        return refused
+    async with TPClient() as client:
+        plans = await _list_plans(client)
+        if plans is None:
+            return _err("API_ERROR", "Could not list plans; nothing was deleted.")
+        if refused := _not_draft(plans, v.plan_id):
+            return refused
+        sd, before = await _fetch_plan_workouts(client, v.plan_id)
+        if sd is None:
+            return {**before, "message": f"{before.get('message')} Nothing was deleted."}
+        if not any(w.get("workoutId") == v.workout_id for w in before):
+            return _err("NOT_FOUND", f"Workout {v.workout_id} is not in plan {v.plan_id}; nothing was deleted.")
+        resp = await client.delete(f"/plans/v1/plans/{v.plan_id}/workouts/{v.workout_id}")
+        sd, after = await _fetch_plan_workouts(client, v.plan_id)
+        deleted = None if sd is None else all(w.get("workoutId") != v.workout_id for w in after)
+        return _deleted_result(deleted, resp, {"plan_id": v.plan_id, "workout_id": v.workout_id})
+
+
+async def tp_delete_training_plan(plan_id: int | str) -> dict[str, Any]:
+    """Delete ONE draft or scratch plan, then re-list the plans: ``deleted`` is True
+    (gone), False (still listed) or None (unreadable)."""
+    try:
+        v = _PlanIdInput(plan_id=plan_id)  # type: ignore[arg-type]
+    except (ValidationError, ValueError) as e:
+        return _validation_err(e)
+    if refused := _guard_error():
+        return refused
+    async with TPClient() as client:
+        plans = await _list_plans(client)
+        if plans is None:
+            return _err("API_ERROR", "Could not list plans; nothing was deleted.")
+        if refused := _not_draft(plans, v.plan_id):
+            return refused
+        resp = await client.delete(f"/plans/v1/plans/{v.plan_id}")
+        after = await _list_plans(client)
+        deleted = None if after is None else all(p.get("planId") != v.plan_id for p in after)
+        return _deleted_result(deleted, resp, {"plan_id": v.plan_id})
