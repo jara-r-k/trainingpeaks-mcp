@@ -1,5 +1,5 @@
 {
- "_doc": "Real TrainingPeaks GET captures (read-only, 1-2 Oct 2026). structure: the native structure of reference card 4971449-2708294597 exactly as TP returned it, without primaryIntensityTargetOrRange. totalTimePlanned: the stored decimal hours of the four reference cards whose planned time is not whole minutes.",
+ "_doc": "Real TrainingPeaks GET captures (read-only, 1-2 Oct 2026). structure: the native structure of reference card 9900006-2708294597 exactly as TP returned it, without primaryIntensityTargetOrRange. totalTimePlanned: the stored decimal hours of the four reference cards whose planned time is not whole minutes.",
  "structure": {
   "polyline": [
    [
@@ -374,9 +374,9 @@
   "visualizationDistanceUnit": "kilometer"
  },
  "totalTimePlanned": {
-  "3580763-2710848839": 1.2066666666666668,
-  "4227851-3224483262": 1.3541666666666667,
-  "4860436-3046034174": 0.7727777777777778,
-  "4971449-2708294597": 0.7936111111111112
+  "9900003-2710848839": 1.2066666666666668,
+  "9900004-3224483262": 1.3541666666666667,
+  "9900005-3046034174": 0.7727777777777778,
+  "9900006-2708294597": 0.7936111111111112
  }
 }

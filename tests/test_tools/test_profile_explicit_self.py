@@ -23,7 +23,7 @@ USER = {
             "coachedBy": 1456247,
         },
         {
-            "athleteId": 1653162,
+            "athleteId": 9900002,
             "firstName": "Simon",
             "lastName": "Knowles",
             "email": "other@example.test",
@@ -69,7 +69,7 @@ async def test_calendar_uses_roster_athlete_not_person_id(profile_client):
     for target, expected in [
         ("1456247", None),
         ("2594040", 2594040),
-        ("1653162", 1653162),
+        ("9900002", 9900002),
     ]:
         token = athlete_override.set(target)
         try:

@@ -61,7 +61,7 @@ def transport(client, handler):
     "method,path,body",
     [
         ("POST", PATH + "/extra", BODY),
-        ("POST", PATH.replace("2594040", "1653162"), BODY),
+        ("POST", PATH.replace("2594040", "9900002"), BODY),
         ("POST", PATH, {**BODY, "isHidden": False}),
         ("POST", PATH, {**BODY, "workoutDay": "2026-10-13"}),
         ("PUT", PATH, BODY),
@@ -366,7 +366,7 @@ async def test_body_is_frozen_before_async_work(client, tmp_path):
     body = dict(BODY)
 
     async def throttle():
-        body["athleteId"] = 1653162
+        body["athleteId"] = 9900002
 
     client._throttle.side_effect = throttle
     sent = []
