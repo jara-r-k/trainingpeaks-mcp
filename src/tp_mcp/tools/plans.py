@@ -19,6 +19,7 @@ import json
 import logging
 from datetime import date as date_type
 from datetime import timedelta
+from math import isclose
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -223,6 +224,33 @@ def _plan_workout_payload(w: dict[str, Any], athlete_id: int, day: date_type) ->
     return payload
 
 
+def _matches_plan_workout(w: dict[str, Any], payload: dict[str, Any]) -> bool:
+    """Match a new calendar card to the intended copy when the POST returned no id."""
+    if (w.get("workoutTypeValueId") != payload["workoutTypeValueId"]
+            or (w.get("workoutDay") or "")[:10] != payload["workoutDay"][:10]
+            or (w.get("title") or "").strip() != payload["title"]):
+        return False
+    try:
+        for field in ("totalTimePlanned", "distancePlanned"):
+            actual, expected = w.get(field), payload.get(field)
+            if actual is None or expected is None:
+                if actual is not expected:
+                    return False
+            elif not isclose(float(actual), float(expected), rel_tol=0, abs_tol=1e-6):
+                return False
+        if "structure" in payload:
+            actual, expected = w.get("structure"), payload["structure"]
+            if isinstance(actual, str):
+                actual = json.loads(actual)
+            if isinstance(expected, str):
+                expected = json.loads(expected)
+            if json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
+                return False
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return True
+
+
 class _CopyPlanWorkoutInput(BaseModel):
     plan_id: int = Field(gt=0)
     plan_workout_id: int = Field(gt=0)
@@ -288,13 +316,18 @@ async def tp_copy_plan_workout(
 
         # Stick check: uncached re-read, diffed against the snapshot. A POST that
         # errored or returned no id may still have created the workout.
+        # After a successful re-read without an id or POST error, created=False
+        # requires no added cards; new cards without a unique full match are ambiguous.
         after = await day_workouts()
         added = [w for w in (after or []) if w.get("workoutId") not in before_ids]
+        ambiguous = False
         if new_id:
             # A known id is authoritative: never adopt some other same-titled card.
             saved = next((w for w in added if w.get("workoutId") == new_id), None)
         else:
-            saved = next((w for w in added if (w.get("title") or "").strip() == payload["title"]), None)
+            matches = [w for w in added if _matches_plan_workout(w, payload)]
+            ambiguous = bool(added) and len(matches) != 1
+            saved = matches[0] if len(matches) == 1 else None
         if post_error and saved is None:
             # The request may have saved server-side before failing: unknown, check first.
             note = "unknown whether it was created; do NOT re-copy, check first"
@@ -302,8 +335,8 @@ async def tp_copy_plan_workout(
         created: bool | None
         if saved is not None:
             created = True
-        elif after is None or new_id:
-            created = None  # TP returned an id (or the re-read failed) but the day doesn't show it yet
+        elif after is None or new_id or ambiguous:
+            created = None  # The re-read cannot establish which card, if any, was created.
         else:
             created = False
         verified = saved is not None and bool(saved.get("isHidden")) == is_hidden
@@ -318,7 +351,9 @@ async def tp_copy_plan_workout(
             "is_hidden": saved.get("isHidden") if saved else None,
             "copied_from": {"plan_id": v.plan_id, "plan_workout_id": v.plan_workout_id},
         }
-        if created is None:
+        if ambiguous:
+            result["message"] = "New cards could not be uniquely matched to this copy; do NOT re-copy, check first."
+        elif created is None:
             result["message"] = (
                 "Unknown whether it was created (not visible on re-read yet). Do NOT re-copy; check first."
             )
