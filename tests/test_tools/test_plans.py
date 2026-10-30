@@ -171,7 +171,7 @@ def _card_router(before=(), after=(), fail_reads=False):
 
 @pytest.fixture
 def as_athlete():
-    token = athlete_override.set("1472902")
+    token = athlete_override.set("9900001")
     yield
     athlete_override.reset(token)
 
