@@ -557,6 +557,47 @@ async def test_delete_plan_workout_failed_but_gone_is_deleted(tp, journal):
     assert r["deleted"] is True and r["success"] is True
 
 
+async def test_delete_plan_workout_last_card_is_confirmed(tp, journal):
+    # TP clears a plan's startDate and dayCount when its last card goes (seen live 3 Nov 2026).
+    remove = deletes(tp)
+
+    def write(request):
+        response = remove(request)
+        if not tp.workouts:
+            tp.plans = [{**p, "startDate": None, "dayCount": 0} for p in tp.plans]
+        return response
+
+    tp.workouts, tp.write = [CARD], write
+    r = await run(journal, tp_delete_plan_workout, 77, 3001)
+    assert r == {"success": True, "deleted": True, "plan_id": 77, "workout_id": 3001}
+    assert tp.sent("GET")[-1][1] == f"/plans/v1/plans/77/workouts/{DAY}/{DAY}"
+
+
+async def test_delete_plan_workout_unreadable_day_answer_is_unknown(tp, journal, monkeypatch):
+    # A 200 that carries no card list proves nothing: the card may still be there.
+    tp.workouts = [CARD]
+    tp.write = deletes(tp, remove=False)
+    read = tp.__call__
+
+    def answer(request):
+        if request.method == "GET" and request.url.path.endswith(f"/{DAY}/{DAY}"):
+            tp.requests.append(request)
+            return httpx.Response(200, content=b"")
+        return read(request)
+
+    monkeypatch.setattr("tp_mcp.tools.plans.TPClient", lambda: make_client(answer))
+    r = await run(journal, tp_delete_plan_workout, 77, 3001)
+    assert r["deleted"] is None and "check first" in r["message"]
+    assert len(tp.sent("DELETE")) == 1
+
+
+async def test_delete_plan_workout_refuses_a_card_without_a_readable_day(tp, journal):
+    tp.workouts, tp.write = [{**CARD, "workoutDay": "2026-11-0XT00:00:00"}], deletes(tp)
+    r = await run(journal, tp_delete_plan_workout, 77, 3001)
+    assert r["error_code"] == "API_ERROR" and "nothing was deleted" in r["message"]
+    assert tp.sent("DELETE") == []
+
+
 DELETE_TOOLS = [(tp_delete_plan_workout, (77, 3001)), (tp_delete_training_plan, (77,))]
 
 

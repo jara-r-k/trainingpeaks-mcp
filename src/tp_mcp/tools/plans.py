@@ -750,11 +750,21 @@ async def tp_delete_plan_workout(plan_id: int | str, workout_id: int | str) -> d
         sd, before = await _fetch_plan_workouts(client, v.plan_id)
         if sd is None:
             return {**before, "message": f"{before.get('message')} Nothing was deleted."}
-        if not any(w.get("workoutId") == v.workout_id for w in before):
+        card = next((w for w in before if w.get("workoutId") == v.workout_id), None)
+        if card is None:
             return _err("NOT_FOUND", f"Workout {v.workout_id} is not in plan {v.plan_id}; nothing was deleted.")
+        # Re-read the card's own day: TP clears a plan's startDate and dayCount when its
+        # last card goes, so the plan's dates can no longer give the range.
+        try:
+            day = date_type.fromisoformat((card.get("workoutDay") or "")[:10]).isoformat()
+        except (TypeError, ValueError):
+            return _err("API_ERROR", f"Workout {v.workout_id} has no readable day; nothing was deleted.")
         resp = await client.delete(f"/plans/v1/plans/{v.plan_id}/workouts/{v.workout_id}")
-        sd, after = await _fetch_plan_workouts(client, v.plan_id)
-        deleted = None if sd is None else all(w.get("workoutId") != v.workout_id for w in after)
+        after = await client.get(f"/plans/v1/plans/{v.plan_id}/workouts/{day}/{day}")
+        if after.is_error or not isinstance(after.data, list):
+            deleted = None
+        else:
+            deleted = all(w.get("workoutId") != v.workout_id for w in after.data)
         return _deleted_result(deleted, resp, {"plan_id": v.plan_id, "workout_id": v.workout_id})
 
 
